@@ -1124,4 +1124,8 @@
         <item>1500</item>
         <item>2000</item>
     </string-array>
+    <string name="add_a_destination_comment">Aggiungi un commento %1$s…</string>
+    <string name="comments_are_locked">I commenti sono bloccati</string>
+    <string name="destination_comments_are_locked">I commenti di %1$s sono bloccati</string>
+    <string name="replies_are_locked">Le risposte sono bloccate</string>
 </resources>

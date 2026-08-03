@@ -38,6 +38,7 @@
     <color name="overlay">#B3000000</color>
     <color name="text_color_tinted">#ACACAC</color>
     <color name="pastel_red">#C25353</color>
+    <color name="youtube_red">#FF0000</color>
 
     <!--shorts-->
     <color name="play_pause_background">#33555555</color>

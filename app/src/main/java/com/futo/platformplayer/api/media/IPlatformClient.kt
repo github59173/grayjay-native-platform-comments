@@ -6,6 +6,7 @@ import com.futo.platformplayer.api.media.models.ResultCapabilities
 import com.futo.platformplayer.api.media.models.channels.IPlatformChannel
 import com.futo.platformplayer.api.media.models.chapters.IChapter
 import com.futo.platformplayer.api.media.models.comments.IPlatformComment
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentMutationResult
 import com.futo.platformplayer.api.media.models.contents.IPlatformContent
 import com.futo.platformplayer.api.media.models.contents.IPlatformContentDetails
 import com.futo.platformplayer.api.media.models.live.ILiveChatWindowDescriptor
@@ -14,6 +15,9 @@ import com.futo.platformplayer.api.media.models.playback.IPlaybackTracker
 import com.futo.platformplayer.api.media.models.playlists.IPlatformPlaylist
 import com.futo.platformplayer.api.media.models.playlists.IPlatformPlaylistDetails
 import com.futo.platformplayer.api.media.models.video.IPlatformVideo
+import com.futo.platformplayer.api.media.models.video.PlatformVideoReaction
+import com.futo.platformplayer.api.media.models.video.PlatformVideoReactionResult
+import com.futo.platformplayer.api.media.models.video.PlatformVideoReactionState
 import com.futo.platformplayer.api.media.structures.IPager
 import com.futo.platformplayer.models.ImageVariable
 
@@ -25,6 +29,8 @@ interface IPlatformClient {
     val name: String;
 
     val icon: ImageVariable?;
+    /** Optional opaque ARGB accent supplied by the source plugin for platform-owned UI. */
+    val accentColor: Int? get() = null;
 
     //Capabilities
     val capabilities: PlatformClientCapabilities;
@@ -138,6 +144,14 @@ interface IPlatformClient {
      */
     fun getContentRecommendations(url: String): IPager<IPlatformContent>?;
 
+    /** Optional native-platform reaction state and mutation support for a video. */
+    fun getVideoReactionState(contentUrl: String): PlatformVideoReactionState =
+        PlatformVideoReactionState.unsupported();
+    fun setVideoReaction(
+        contentUrl: String,
+        reaction: PlatformVideoReaction
+    ): PlatformVideoReactionResult = PlatformVideoReactionResult.unsupported();
+
 
     //Comments
     /**
@@ -148,6 +162,23 @@ interface IPlatformClient {
      * Gets the replies to a comment
      */
     fun getSubComments(comment: IPlatformComment): IPager<IPlatformComment>;
+
+    /** Optional comment mutations. Default implementations preserve old clients. */
+    fun createComment(contentUrl: String, message: String): PlatformCommentMutationResult =
+        PlatformCommentMutationResult.unsupported();
+    fun replyToComment(comment: IPlatformComment, message: String): PlatformCommentMutationResult =
+        PlatformCommentMutationResult.unsupported();
+    fun editComment(comment: IPlatformComment, message: String): PlatformCommentMutationResult =
+        PlatformCommentMutationResult.unsupported();
+    fun deleteComment(comment: IPlatformComment): PlatformCommentMutationResult =
+        PlatformCommentMutationResult.unsupported();
+    fun likeComment(comment: IPlatformComment, enabled: Boolean): PlatformCommentMutationResult =
+        PlatformCommentMutationResult.unsupported();
+    fun dislikeComment(comment: IPlatformComment, enabled: Boolean): PlatformCommentMutationResult =
+        PlatformCommentMutationResult.unsupported();
+
+    /** Optional user-visible source identity, for example the selected channel. */
+    fun getCommentingIdentity(): String? = null;
 
     /**
      * Gets the live events of a livestream

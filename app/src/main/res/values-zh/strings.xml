@@ -720,4 +720,8 @@
         <item>意大利语 (IT)</item>
         <item>土耳其语 (TR)</item>
     </string-array>
+    <string name="add_a_destination_comment">添加一条 %1$s 评论…</string>
+    <string name="comments_are_locked">评论已锁定</string>
+    <string name="destination_comments_are_locked">%1$s 评论已锁定</string>
+    <string name="replies_are_locked">回复已锁定</string>
 </resources>

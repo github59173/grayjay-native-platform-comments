@@ -348,10 +348,36 @@ declare interface CommentDef {
     rating: IRating,
     date: long,
     replyCount: int,
-    context: any
+    context: Map<string>,
+    id?: string,
+    isOwnedByUser?: boolean,
+    isEdited?: boolean,
+    userReaction?: "NONE" | "LIKE" | "DISLIKE",
+    capabilities?: PlatformCommentCapability[],
+    visibility?: "UNKNOWN" | "ACKNOWLEDGED" | "VISIBLE" | "HELD_FOR_REVIEW" | "DELETED"
 }
 declare class PlatformComment {
     constructor(obj: CommentDef);
+}
+
+type PlatformCommentCapability =
+    "COMMENTS_CREATE" | "COMMENTS_REPLY" | "COMMENTS_EDIT" |
+    "COMMENTS_DELETE" | "COMMENTS_LIKE" | "COMMENTS_DISLIKE";
+
+declare interface CommentMutationResult {
+    success: boolean,
+    comment?: PlatformComment,
+    deleted?: boolean,
+    reaction?: "NONE" | "LIKE" | "DISLIKE",
+    retryable?: boolean,
+    message?: string,
+    errorCode?: "AUTH_REQUIRED" | "SESSION_EXPIRED" |
+        "ACCOUNT_OR_CHANNEL_NOT_SELECTED" | "COMMENTS_DISABLED" |
+        "ACTION_NOT_SUPPORTED" | "NOT_AUTHORIZED" | "COMMENT_NOT_FOUND" |
+        "INVALID_TEXT" | "TEXT_TOO_LONG" | "RATE_LIMITED" |
+        "MODERATION_REJECTED" | "HELD_FOR_REVIEW" | "NETWORK_ERROR" |
+        "UPSTREAM_RESPONSE_CHANGED" | "UNKNOWN",
+    visibility?: "UNKNOWN" | "ACKNOWLEDGED" | "VISIBLE" | "HELD_FOR_REVIEW" | "DELETED"
 }
 
 declare class PlaybackTracker {
@@ -464,6 +490,15 @@ interface Source {
     getComments(url: string): CommentPager;
     //Optional
     getSubComments(comment: PlatformComment): CommentPager;
+
+    // Optional and independently capability-detected comment mutations.
+    createComment?(contentUrl: string, message: string): CommentMutationResult;
+    replyToComment?(comment: PlatformComment, message: string): CommentMutationResult;
+    editComment?(comment: PlatformComment, message: string): CommentMutationResult;
+    deleteComment?(comment: PlatformComment): CommentMutationResult;
+    likeComment?(comment: PlatformComment, enabled: boolean): CommentMutationResult;
+    dislikeComment?(comment: PlatformComment, enabled: boolean): CommentMutationResult;
+    getCommentingIdentity?(): string;
 
     //Optional
     getUserSubscriptions(): string[];

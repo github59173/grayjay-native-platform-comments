@@ -13,24 +13,34 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.futo.platformplayer.R
 import com.futo.platformplayer.UIDialogs
+import com.futo.platformplayer.api.media.models.comments.CommentDestination
 import com.futo.platformplayer.api.media.models.comments.IPlatformComment
 import com.futo.platformplayer.api.media.models.comments.LazyComment
 import com.futo.platformplayer.api.media.models.comments.PolycentricPlatformComment
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentCapability
+import com.futo.platformplayer.api.media.models.comments.IPlatformCommentingPager
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentingState
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentUiPolicy
 import com.futo.platformplayer.api.media.models.video.IPlatformVideoDetails
 import com.futo.platformplayer.api.media.structures.EmptyPager
 import com.futo.platformplayer.api.media.structures.IAsyncPager
 import com.futo.platformplayer.api.media.structures.IPager
 import com.futo.platformplayer.constructs.Event1
+import com.futo.platformplayer.constructs.Event2
 import com.futo.platformplayer.constructs.TaskHandler
+import com.futo.platformplayer.dialogs.resolveReplyMention
 import com.futo.platformplayer.engine.exceptions.ScriptUnavailableException
 import com.futo.platformplayer.logging.Logger
+import com.futo.platformplayer.dialogs.CommentDialog
 import com.futo.platformplayer.states.StateApp
 import com.futo.platformplayer.states.StatePolycentric
+import com.futo.platformplayer.states.StatePlatform
 import com.futo.platformplayer.views.adapters.CommentViewHolder
 import com.futo.platformplayer.views.adapters.InsertedViewAdapterWithLoader
 import com.futo.polycentric.core.fullyBackfillServersAnnounceExceptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.net.UnknownHostException
 
 class CommentsList : ConstraintLayout {
@@ -79,11 +89,15 @@ class CommentsList : ConstraintLayout {
     private var _loading = false;
     private val _prependedView: FrameLayout;
     private var _readonly: Boolean = false;
+    private var _replyThreadParent: IPlatformComment? = null
+    private var _replyThreadState = PlatformCommentingState.UNKNOWN
     private val _layoutScrollToTop: FrameLayout;
 
     var onRepliesClick = Event1<IPlatformComment>();
+    var onReplyAdded = Event2<IPlatformComment, IPlatformComment>();
     var onAuthorClick = Event1<IPlatformComment>();
     var onCommentsLoaded = Event1<Int>();
+    var onCommentingStateChanged = Event1<PlatformCommentingState>();
 
     constructor(context: Context, attrs: AttributeSet) : super(context, attrs) {
         LayoutInflater.from(context).inflate(R.layout.view_comments_list, this, true);
@@ -111,12 +125,16 @@ class CommentsList : ConstraintLayout {
 
         _adapterComments = InsertedViewAdapterWithLoader(context, arrayListOf(_prependedView, _textMessage), arrayListOf(),
             childCountGetter = { _comments.size },
-            childViewHolderBinder = { viewHolder, position -> viewHolder.bind(_comments[position], _readonly); },
+            childViewHolderBinder = { viewHolder, position ->
+                viewHolder.bind(_comments[position], _readonly, _replyThreadParent, _replyThreadState)
+            },
             childViewHolderFactory = { viewGroup, _ ->
                 val holder = CommentViewHolder(viewGroup);
                 holder.onRepliesClick.subscribe { c -> onRepliesClick.emit(c) };
+                holder.onReply.subscribe(::onReply);
                 holder.onAuthorClick.subscribe { c -> onAuthorClick.emit(c) };
                 holder.onDelete.subscribe(::onDelete);
+                holder.onEdit.subscribe(::onEdit);
                 return@InsertedViewAdapterWithLoader holder;
             }
         );
@@ -155,12 +173,52 @@ class CommentsList : ConstraintLayout {
         _prependedView.addView(view);
     }
 
+    /**
+     * YouTube replies are flat. Every child uses the top-level thread's reply
+     * command; the selected child contributes only its @mention.
+     */
+    fun setReplyThread(parent: IPlatformComment?, state: PlatformCommentingState) {
+        _replyThreadParent = parent
+        _replyThreadState = state
+        _adapterComments.notifyDataSetChanged()
+    }
+
+    private fun onReply(comment: IPlatformComment) {
+        if (comment is PolycentricPlatformComment ||
+            !PlatformCommentUiPolicy.canReplyToOtherUser(comment, _replyThreadParent, _replyThreadState))
+            return
+        val mutationParent = _replyThreadParent ?: comment
+        val mention = resolveReplyMention(comment.author.name, comment.author.url)
+        if (mention.isEmpty())
+            return
+        val client = StatePlatform.instance.getContentClientOrNull(comment.contextUrl) ?: return
+        UIDialogs.showCommentDialog(
+            context = context,
+            contextUrl = comment.contextUrl,
+            ref = null,
+            platformClient = client,
+            parentPlatformComment = mutationParent,
+            preferredDestination = CommentDestination.PLATFORM,
+            restrictToPreferredDestination = true,
+            initialText = mention
+        ) { reply -> onReplyAdded.emit(mutationParent, reply) }
+    }
+
     private fun onDelete(comment: IPlatformComment) {
-        UIDialogs.showConfirmationDialog(context, "Are you sure you want to delete this comment?", {
-            val processHandle = StatePolycentric.instance.processHandle ?: return@showConfirmationDialog
+        UIDialogs.showConfirmationDialog(context, context.getString(R.string.confirm_delete_comment), {
             if (comment !is PolycentricPlatformComment) {
+                if (PlatformCommentCapability.COMMENTS_DELETE !in comment.capabilities)
+                    return@showConfirmationDialog
+                StateApp.instance.scopeOrNull?.launch(Dispatchers.IO) {
+                    val result = StatePlatform.instance.deleteComment(comment)
+                    withContext(Dispatchers.Main) {
+                        if (result.success) removeComment(comment)
+                        else UIDialogs.toast(context, result.message ?: context.getString(R.string.failed_to_delete_comment))
+                    }
+                }
                 return@showConfirmationDialog
             }
+            val processHandle = StatePolycentric.instance.processHandle ?: return@showConfirmationDialog
 
             val index = _comments.indexOf(comment)
             if (index != -1) {
@@ -185,6 +243,38 @@ class CommentsList : ConstraintLayout {
                 }
             }
         })
+    }
+
+    private fun onEdit(comment: IPlatformComment) {
+        if (!comment.isOwnedByUser || PlatformCommentCapability.COMMENTS_EDIT !in comment.capabilities)
+            return
+        val client = StatePlatform.instance.getContentClientOrNull(comment.contextUrl) ?: return
+        val dialog = CommentDialog(
+            context = context,
+            contextUrl = comment.contextUrl,
+            ref = null,
+            platformClient = client,
+            parentPlatformComment = null,
+            editTarget = comment,
+            preferredDestination = CommentDestination.PLATFORM,
+            restrictToPreferredDestination = true
+        )
+        dialog.onCommentUpdated.subscribe { updated ->
+            val index = _comments.indexOf(comment)
+            if (index >= 0) {
+                _comments[index] = updated
+                _adapterComments.notifyItemChanged(_adapterComments.childToParentPosition(index))
+            }
+        }
+        dialog.show()
+    }
+
+    private fun removeComment(comment: IPlatformComment) {
+        val index = _comments.indexOf(comment)
+        if (index >= 0) {
+            _comments.removeAt(index)
+            _adapterComments.notifyItemRemoved(_adapterComments.childToParentPosition(index))
+        }
     }
 
     private fun onScrolled() {
@@ -223,12 +313,16 @@ class CommentsList : ConstraintLayout {
         _comments.addAll(pager.getResults());
         _adapterComments.notifyDataSetChanged();
         _commentsPager = pager;
+        onCommentingStateChanged.emit(
+            (pager as? IPlatformCommentingPager)?.commentingState ?: PlatformCommentingState.UNKNOWN
+        )
         onCommentsLoaded.emit(_comments.size);
     }
     fun clearComments() {
         _comments.clear();
         _adapterComments.notifyDataSetChanged();
         _commentsPager = EmptyPager();
+        onCommentingStateChanged.emit(PlatformCommentingState.UNKNOWN)
         onCommentsLoaded.emit(0);
     }
 
@@ -237,6 +331,7 @@ class CommentsList : ConstraintLayout {
         setMessage(null);
 
         _readonly = readonly;
+        onCommentingStateChanged.emit(PlatformCommentingState.UNKNOWN)
         setLoading(true);
         _comments.clear();
         _commentsPager = null;
@@ -267,6 +362,7 @@ class CommentsList : ConstraintLayout {
         _commentsPager = null;
         _adapterComments.notifyDataSetChanged();
         setMessage(null);
+        onCommentingStateChanged.emit(PlatformCommentingState.UNKNOWN)
     }
 
     fun cancel() {

@@ -720,4 +720,8 @@
         <item>الإيطالية (IT)</item>
         <item>التركية (TR)</item>
     </string-array>
+    <string name="add_a_destination_comment">أضف تعليقًا على %1$s…</string>
+    <string name="comments_are_locked">التعليقات مقفلة</string>
+    <string name="destination_comments_are_locked">تعليقات %1$s مقفلة</string>
+    <string name="replies_are_locked">الردود مقفلة</string>
 </resources>

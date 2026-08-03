@@ -1,0 +1,43 @@
+name: Native platform comments
+
+on:
+  push:
+    branches: [main, "codex/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Materialize upstream Git LFS objects
+        run: |
+          git lfs install
+          git remote add futo-upstream https://github.com/futo-org/grayjay-android.git
+          git lfs fetch futo-upstream 993a9bd850f022f952460b1dfc0744b98e0c23b4
+          git lfs checkout
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify native-platform implementation
+        run: ./scripts/verify-native-platform-comments.sh
+
+      - name: Assemble debug variants
+        run: ./gradlew :app:assembleStableDebug :app:assembleUnstableDebug

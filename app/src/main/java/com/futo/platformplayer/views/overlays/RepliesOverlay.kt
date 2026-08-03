@@ -11,8 +11,13 @@ import com.futo.platformplayer.R
 import com.futo.platformplayer.UIDialogs
 import com.futo.platformplayer.activities.MainActivity
 import com.futo.platformplayer.api.http.ManagedHttpClient
+import com.futo.platformplayer.api.media.models.comments.CommentDestination
 import com.futo.platformplayer.api.media.models.comments.IPlatformComment
 import com.futo.platformplayer.api.media.models.comments.PolycentricPlatformComment
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentCapability
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentingAvailability
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentingState
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentUiPolicy
 import com.futo.platformplayer.api.media.structures.IPager
 import com.futo.platformplayer.constructs.Event0
 import com.futo.platformplayer.fixHtmlLinks
@@ -75,9 +80,22 @@ class RepliesOverlay : LinearLayout {
             _onCommentAdded?.invoke(it);
         }
 
+        _commentsList.onReplyAdded.subscribe { _, reply ->
+            _commentsList.addComment(reply)
+            _onCommentAdded?.invoke(reply)
+        }
+
         _commentsList.onCommentsLoaded.subscribe { count ->
             if (_readonly && count == 0) {
                 UIDialogs.toast(context, context.getString(R.string.expected_at_least_one_reply_but_no_replies_were_returned_by_the_server));
+            }
+        }
+
+        _commentsList.onCommentingStateChanged.subscribe { state ->
+            val parent = _parentComment
+            if (parent != null && parent !is PolycentricPlatformComment &&
+                state.availability != PlatformCommentingAvailability.UNKNOWN) {
+                applyPlatformReplyState(parent, state)
             }
         }
 
@@ -91,7 +109,8 @@ class RepliesOverlay : LinearLayout {
             if (c is PolycentricPlatformComment) {
                 load(false, metadata, c.contextUrl, c.reference, c, { StatePolycentric.instance.getCommentPager(c.contextUrl, c.reference) });
             } else {
-                load(true, metadata, null, null, c, { StatePlatform.instance.getSubComments(c) });
+                val canReply = PlatformCommentCapability.COMMENTS_REPLY in c.capabilities
+                load(!canReply, metadata, c.contextUrl, null, c, { StatePlatform.instance.getSubComments(c) });
             }
         };
 
@@ -109,13 +128,60 @@ class RepliesOverlay : LinearLayout {
         _topbar.setInfo(context.getString(R.string.Replies), "");
     }
 
+    private fun applyPlatformReplyState(parent: IPlatformComment, state: PlatformCommentingState) {
+        val effectiveState = if (state.availability == PlatformCommentingAvailability.UNKNOWN)
+            PlatformCommentUiPolicy.replyState(parent)
+        else
+            state
+        _commentsList.setReplyThread(parent, effectiveState)
+        _readonly = effectiveState.availability != PlatformCommentingAvailability.AVAILABLE
+
+        when (effectiveState.availability) {
+            PlatformCommentingAvailability.AVAILABLE,
+            PlatformCommentingAvailability.LOCKED -> {
+                _addCommentView.visibility = View.VISIBLE
+                _addCommentView.setContext(
+                    parent.contextUrl,
+                    null,
+                    parent,
+                    CommentDestination.PLATFORM,
+                    true
+                )
+                _addCommentView.setCommentingState(effectiveState)
+            }
+            PlatformCommentingAvailability.UNKNOWN -> {
+                // Unknown is intentionally not presented as locked. Wait for
+                // the reply pager to prove whether YouTube exposed Reply.
+                _addCommentView.visibility = View.GONE
+            }
+        }
+    }
+
     fun load(readonly: Boolean, metadata: String, contextUrl: String?, ref: Protocol.Reference?, parentComment: IPlatformComment? = null, loader: suspend () -> IPager<IPlatformComment>, onCommentAdded: ((comment: IPlatformComment) -> Unit)? = null, onParentClick: ((comment: IPlatformComment) -> Unit)? = null) {
-        _readonly = readonly;
-        if (readonly) {
-            _addCommentView.visibility = View.GONE;
+        _parentComment = parentComment
+        val replyContextUrl = contextUrl ?: parentComment?.contextUrl
+        if (parentComment != null && parentComment !is PolycentricPlatformComment) {
+            applyPlatformReplyState(parentComment, PlatformCommentUiPolicy.replyState(parentComment))
         } else {
-            _addCommentView.visibility = View.VISIBLE;
-            _addCommentView.setContext(contextUrl, ref);
+            _commentsList.setReplyThread(null, PlatformCommentingState.UNKNOWN)
+            val canReply = !readonly && !replyContextUrl.isNullOrBlank()
+            _readonly = !canReply
+            if (canReply) {
+                _addCommentView.visibility = View.VISIBLE
+                _addCommentView.setContext(
+                    replyContextUrl,
+                    ref,
+                    null,
+                    if (parentComment is PolycentricPlatformComment)
+                        CommentDestination.POLYCENTRIC
+                    else
+                        CommentDestination.PLATFORM,
+                    true
+                )
+                _addCommentView.setCommentingState(PlatformCommentingState.AVAILABLE)
+            } else {
+                _addCommentView.visibility = View.GONE
+            }
         }
 
         if (parentComment == null) {
@@ -140,9 +206,11 @@ class RepliesOverlay : LinearLayout {
         }
 
         _topbar.setInfo(context.getString(R.string.Replies), metadata);
-        _commentsList.load(readonly, loader);
+        // Platform comments are independently guarded by their advertised
+        // capabilities. Keeping the whole list read-only would also suppress
+        // valid like/dislike actions on the replies themselves.
+        _commentsList.load(false, loader);
         _onCommentAdded = onCommentAdded;
-        _parentComment = parentComment;
     }
 
     fun handleParentClick(contextUrl: String, ref: Protocol.Reference): Boolean {

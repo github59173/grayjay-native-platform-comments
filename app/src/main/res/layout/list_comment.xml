@@ -65,9 +65,23 @@
             android:textSize="14sp"
             app:layout_constraintBottom_toBottomOf="@id/text_author"
             app:layout_constraintLeft_toRightOf="@id/text_author"
-            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintRight_toLeftOf="@id/button_comment_options"
             app:layout_constraintTop_toTopOf="@id/text_author"
             tools:text=" • 3 years ago" />
+
+        <ImageButton
+            android:id="@+id/button_comment_options"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/more_options"
+            android:padding="12dp"
+            android:rotation="90"
+            android:scaleType="centerInside"
+            android:visibility="gone"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:srcCompat="@drawable/ic_more" />
 
         <com.futo.platformplayer.views.behavior.NonScrollingTextView
             android:id="@+id/text_body"
@@ -83,7 +97,7 @@
             android:maxLines="150"
             app:layout_constraintTop_toBottomOf="@id/text_metadata"
             app:layout_constraintLeft_toRightOf="@id/image_thumbnail"
-            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintRight_toLeftOf="@id/button_comment_options"
             tools:text="@string/lorem_ipsum" />
 
         <LinearLayout
@@ -91,6 +105,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             app:layout_constraintLeft_toLeftOf="@id/text_body"
+            app:layout_constraintRight_toRightOf="parent"
             app:layout_constraintTop_toBottomOf="@id/text_body"
             android:layout_marginLeft="-10dp"
             android:layout_marginTop="8dp"
@@ -152,46 +167,18 @@
             </LinearLayout>
 
             <com.futo.platformplayer.views.pills.PillButton
-                android:id="@+id/image_copy"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                app:pillIcon="@drawable/ic_copy"
-                app:pillText=""
-                android:layout_marginStart="15dp"
-                android:layout_marginEnd="0dp"/>
-            <com.futo.platformplayer.views.pills.PillButton
                 android:id="@+id/button_replies"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:contentDescription="@string/cd_button_replies"
                 app:pillIcon="@drawable/ic_forum"
                 app:pillText="55 Replies"
-                android:layout_marginStart="2dp" />
+                android:layout_marginStart="8dp" />
 
             <Space android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1" />
 
-            <FrameLayout
-                android:id="@+id/button_delete"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/background_pill_pred"
-                android:paddingTop="8dp"
-                android:paddingBottom="8dp"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:layout_marginStart="12dp">
-                <TextView
-                    android:id="@+id/pill_text"
-                    android:layout_width="wrap_content"
-                    android:layout_height="match_parent"
-                    android:textColor="@color/white"
-                    android:textSize="13dp"
-                    android:gravity="center_vertical"
-                    android:fontFamily="@font/inter_light"
-                    android:text="@string/delete" />
-            </FrameLayout>
         </LinearLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>
 

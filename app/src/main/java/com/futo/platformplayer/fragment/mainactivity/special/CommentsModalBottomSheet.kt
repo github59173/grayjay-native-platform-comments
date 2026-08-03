@@ -20,7 +20,9 @@ import com.futo.platformplayer.R
 import com.futo.platformplayer.Settings
 import com.futo.platformplayer.api.media.PlatformID
 import com.futo.platformplayer.api.media.models.PlatformAuthorMembershipLink
+import com.futo.platformplayer.api.media.models.comments.CommentDestination
 import com.futo.platformplayer.api.media.models.comments.PolycentricPlatformComment
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentUiPolicy
 import com.futo.platformplayer.api.media.models.ratings.RatingLikeDislikes
 import com.futo.platformplayer.api.media.models.ratings.RatingLikes
 import com.futo.platformplayer.api.media.models.video.IPlatformVideoDetails
@@ -151,6 +153,11 @@ class CommentsModalBottomSheet : BottomSheetDialogFragment() {
         buttonPolycentric = bottomSheetDialog.findViewById(R.id.button_polycentric)!!
         buttonPlatform = bottomSheetDialog.findViewById(R.id.button_platform)!!
 
+        commentsList.onCommentingStateChanged.subscribe { state ->
+            if (tabIndex == 1)
+                addCommentView.setCommentingState(state)
+        }
+
         commentsList.onAuthorClick.subscribe { c ->
             if (c !is PolycentricPlatformComment) {
                 return@subscribe
@@ -180,7 +187,7 @@ class CommentsModalBottomSheet : BottomSheetDialogFragment() {
                     parentComment = newComment
                 })
             } else {
-                containerContentReplies.load(tabIndex!! != 0, metadata, null, null, c, { StatePlatform.instance.getSubComments(c) })
+                containerContentReplies.load(tabIndex!! != 0, metadata, c.contextUrl, null, c, { StatePlatform.instance.getSubComments(c) })
             }
             animateOpenOverlayView(containerContentReplies)
         }
@@ -366,17 +373,23 @@ class CommentsModalBottomSheet : BottomSheetDialogFragment() {
 
         when (index) {
             null -> {
+                addCommentView.setDestination(null)
                 addCommentView.visibility = GONE
                 commentsList.clear()
             }
 
             0 -> {
+                addCommentView.setDestination(CommentDestination.POLYCENTRIC, true)
                 addCommentView.visibility = VISIBLE
                 fetchPolycentricComments()
             }
 
             1 -> {
-                addCommentView.visibility = GONE
+                addCommentView.setDestination(CommentDestination.PLATFORM, true)
+                val canCreate = PlatformCommentUiPolicy.canCreate(
+                    StatePlatform.instance.getContentClientOrNull(video.url)?.capabilities
+                )
+                addCommentView.visibility = if (canCreate) VISIBLE else GONE
                 fetchComments()
             }
         }
@@ -385,7 +398,7 @@ class CommentsModalBottomSheet : BottomSheetDialogFragment() {
     private fun fetchComments() {
         Logger.i(TAG, "fetchComments")
         video.let {
-            commentsList.load(true) { StatePlatform.instance.getComments(it) }
+            commentsList.load(false) { StatePlatform.instance.getComments(it) }
         }
     }
 

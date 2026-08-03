@@ -1052,4 +1052,8 @@
         <item>1500</item>
         <item>2000</item>
     </string-array>
+    <string name="add_a_destination_comment">%1$s yorumu ekle…</string>
+    <string name="comments_are_locked">Yorumlar kilitli</string>
+    <string name="destination_comments_are_locked">%1$s yorumları kilitli</string>
+    <string name="replies_are_locked">Yanıtlar kilitli</string>
 </resources>

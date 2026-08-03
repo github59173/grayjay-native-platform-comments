@@ -6,11 +6,12 @@ import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.appcompat.widget.PopupMenu
 import androidx.recyclerview.widget.RecyclerView.ViewHolder
 import com.futo.platformplayer.R
 import com.futo.platformplayer.Settings
@@ -18,13 +19,19 @@ import com.futo.platformplayer.UIDialogs
 import com.futo.platformplayer.api.media.models.comments.IPlatformComment
 import com.futo.platformplayer.api.media.models.comments.LazyComment
 import com.futo.platformplayer.api.media.models.comments.PolycentricPlatformComment
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentingState
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentReaction
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentUiPolicy
 import com.futo.platformplayer.api.media.models.ratings.RatingLikeDislikes
 import com.futo.platformplayer.api.media.models.ratings.RatingLikes
 import com.futo.platformplayer.constructs.Event1
+import com.futo.platformplayer.dialogs.resolveReplyMention
 import com.futo.platformplayer.fixHtmlLinks
+import com.futo.platformplayer.resolvePlatformAccentColor
 import com.futo.platformplayer.setPlatformPlayerLinkMovementMethod
 import com.futo.platformplayer.states.StateApp
 import com.futo.platformplayer.states.StatePolycentric
+import com.futo.platformplayer.states.StatePlatform
 import com.futo.platformplayer.toHumanNowDiffString
 import com.futo.platformplayer.toHumanNumber
 import com.futo.platformplayer.views.LoaderView
@@ -34,7 +41,9 @@ import com.futo.platformplayer.views.pills.PillRatingLikesDislikes
 import com.futo.polycentric.core.ApiMethods
 import com.futo.polycentric.core.Opinion
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class CommentViewHolder : ViewHolder {
     private val _creatorThumbnail: CreatorThumbnail;
@@ -44,19 +53,27 @@ class CommentViewHolder : ViewHolder {
     private val _imageLikeIcon: ImageView;
     private val _textLikes: TextView;
     private val _imageDislikeIcon: ImageView;
-    private val _buttonCopy: PillButton;
     private val _textDislikes: TextView;
     private val _buttonReplies: PillButton;
     private val _layoutRating: LinearLayout;
     private val _pillRatingLikesDislikes: PillRatingLikesDislikes;
     private val _layoutComment: ConstraintLayout;
-    private val _buttonDelete: FrameLayout;
+    private val _buttonOptions: ImageButton;
 
     private val _containerComments: ConstraintLayout;
     private val _loader: LoaderView;
 
+    private var reactionJob: Job? = null
+    @Volatile private var desiredPlatformReaction = PlatformCommentReaction.NONE
+    @Volatile private var confirmedPlatformReaction = PlatformCommentReaction.NONE
+    private var reactionGeneration = 0
+    private var replyThreadParent: IPlatformComment? = null
+    private var replyThreadState = PlatformCommentingState.UNKNOWN
+
     var onRepliesClick = Event1<IPlatformComment>();
+    var onReply = Event1<IPlatformComment>();
     var onDelete = Event1<IPlatformComment>();
+    var onEdit = Event1<IPlatformComment>();
     var onAuthorClick = Event1<IPlatformComment>();
     var comment: IPlatformComment? = null
         private set;
@@ -68,23 +85,21 @@ class CommentViewHolder : ViewHolder {
         _textMetadata = itemView.findViewById(R.id.text_metadata);
         _textBody = itemView.findViewById(R.id.text_body);
         _imageLikeIcon = itemView.findViewById(R.id.image_like_icon);
-        _buttonCopy = itemView.findViewById(R.id.image_copy);
         _textLikes = itemView.findViewById(R.id.text_likes);
         _imageDislikeIcon = itemView.findViewById(R.id.image_dislike_icon);
         _textDislikes = itemView.findViewById(R.id.text_dislikes);
         _buttonReplies = itemView.findViewById(R.id.button_replies);
         _layoutRating = itemView.findViewById(R.id.layout_rating);
         _pillRatingLikesDislikes = itemView.findViewById(R.id.rating);
-        _buttonDelete = itemView.findViewById(R.id.button_delete);
+        _buttonOptions = itemView.findViewById(R.id.button_comment_options);
 
         _containerComments = itemView.findViewById(R.id.comment_container);
         _loader = itemView.findViewById(R.id.loader);
 
         _pillRatingLikesDislikes.onLikeDislikeUpdated.subscribe { args ->
-            val c = comment
-            if (c !is PolycentricPlatformComment) {
-                throw Exception("Not implemented for non polycentric comments")
-            }
+            val c = comment ?: return@subscribe
+            if (c !is PolycentricPlatformComment)
+                return@subscribe
 
             val newOpinion: Opinion = if (args.hasLiked) {
                 Opinion.like
@@ -102,16 +117,6 @@ class CommentViewHolder : ViewHolder {
 
             StatePolycentric.instance.updateLikeMap(c.reference, args.hasLiked, args.hasDisliked)
         };
-
-        _buttonCopy.setTransparant()
-        _buttonCopy.onClick.subscribe {
-            val clipboard = viewGroup.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            val text = comment?.message.orEmpty()
-            val clip = ClipData.newPlainText("Comment", text)
-            clipboard.setPrimaryClip(clip)
-            UIDialogs.toast(viewGroup.context, "Copied", false)
-            true
-        }
 
         _creatorThumbnail.onClick.subscribe {
             val c = comment ?: return@subscribe;
@@ -131,21 +136,117 @@ class CommentViewHolder : ViewHolder {
             onRepliesClick.emit(c);
         }
 
-        _buttonDelete.setOnClickListener {
-            val c = comment ?: return@setOnClickListener;
-            onDelete.emit(c);
-        }
+        _buttonOptions.setOnClickListener { showCommentOptions() }
 
         _textBody.setPlatformPlayerLinkMovementMethod(viewGroup.context)
     }
 
-    fun bind(comment: IPlatformComment, readonly: Boolean) {
+    private fun showCommentOptions() {
+        val c = comment ?: return
+        val ownsPolycentricComment = c is PolycentricPlatformComment &&
+            StatePolycentric.instance.processHandle?.system == c.eventPointer.system
+        val canEdit = c !is PolycentricPlatformComment && PlatformCommentUiPolicy.canEdit(c)
+        val canDelete = ownsPolycentricComment ||
+            (c !is PolycentricPlatformComment && PlatformCommentUiPolicy.canDelete(c))
+        val canReply = c !is PolycentricPlatformComment &&
+            PlatformCommentUiPolicy.canReplyToOtherUser(c, replyThreadParent, replyThreadState) &&
+            resolveReplyMention(c.author.name, c.author.url).isNotEmpty()
+        val replyLocked = c !is PolycentricPlatformComment &&
+            PlatformCommentUiPolicy.isReplyLockedInThread(c, replyThreadParent, replyThreadState)
+        PopupMenu(itemView.context, _buttonOptions).apply {
+            if (canReply) {
+                menu.add(MENU_GROUP_COMMENT, MENU_REPLY, 0, R.string.reply)
+            } else if (replyLocked) {
+                menu.add(MENU_GROUP_COMMENT, MENU_REPLY_LOCKED, 0, R.string.reply).apply {
+                    setIcon(R.drawable.ic_lock_18)
+                    isEnabled = false
+                }
+                setForceShowIcon(true)
+            }
+            menu.add(MENU_GROUP_COMMENT, MENU_COPY, 1, R.string.copy)
+            if (canEdit)
+                menu.add(MENU_GROUP_COMMENT, MENU_EDIT, 2, R.string.edit_comment)
+            if (canDelete)
+                menu.add(MENU_GROUP_COMMENT, MENU_DELETE, 3, R.string.delete)
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    MENU_REPLY -> onReply.emit(c)
+                    MENU_COPY -> {
+                        val clipboard = itemView.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Comment", c.message))
+                        UIDialogs.toast(itemView.context, "Copied", false)
+                    }
+                    MENU_EDIT -> onEdit.emit(c)
+                    MENU_DELETE -> onDelete.emit(c)
+                    else -> return@setOnMenuItemClickListener false
+                }
+                true
+            }
+            show()
+        }
+    }
+
+    private fun queuePlatformReaction(c: IPlatformComment, desired: PlatformCommentReaction) {
+        desiredPlatformReaction = desired
+        if (reactionJob?.isActive == true)
+            return
+
+        val generation = reactionGeneration
+        reactionJob = StateApp.instance.scopeOrNull?.launch(Dispatchers.IO) {
+            while (generation == reactionGeneration && this@CommentViewHolder.comment === c) {
+                val target = desiredPlatformReaction
+                val previous = confirmedPlatformReaction
+                if (target == previous) break
+                val result = when (target) {
+                    PlatformCommentReaction.LIKE -> StatePlatform.instance.likeComment(c, true)
+                    PlatformCommentReaction.DISLIKE -> StatePlatform.instance.dislikeComment(c, true)
+                    PlatformCommentReaction.NONE -> if (previous == PlatformCommentReaction.LIKE)
+                        StatePlatform.instance.likeComment(c, false)
+                    else
+                        StatePlatform.instance.dislikeComment(c, false)
+                }
+                if (result.success) {
+                    confirmedPlatformReaction = result.reaction
+                } else {
+                    desiredPlatformReaction = confirmedPlatformReaction
+                    withContext(Dispatchers.Main) {
+                        if (generation != reactionGeneration || this@CommentViewHolder.comment !== c)
+                            return@withContext
+                        _pillRatingLikesDislikes.setRating(
+                            c.rating,
+                            confirmedPlatformReaction == PlatformCommentReaction.LIKE,
+                            confirmedPlatformReaction == PlatformCommentReaction.DISLIKE,
+                            PlatformCommentUiPolicy.canDislike(c)
+                        )
+                        UIDialogs.toast(itemView.context, result.message ?: itemView.context.getString(R.string.failed_to_update_comment_reaction))
+                    }
+                    break
+                }
+            }
+        }
+    }
+
+    fun bind(
+        comment: IPlatformComment,
+        readonly: Boolean,
+        replyThreadParent: IPlatformComment? = null,
+        replyThreadState: PlatformCommentingState = PlatformCommentingState.UNKNOWN
+    ) {
+        this.replyThreadParent = replyThreadParent
+        this.replyThreadState = replyThreadState
+
+        reactionJob?.cancel()
+        reactionJob = null
+        _pillRatingLikesDislikes.setPlatformMutationHandler()
+        reactionGeneration += 1
+        confirmedPlatformReaction = comment.userReaction
+        desiredPlatformReaction = comment.userReaction
 
         if(comment is LazyComment){
             if(comment.isAvailable)
             {
                 comment.getUnderlyingComment()?.let {
-                    bind(it, readonly);
+                    bind(it, readonly, replyThreadParent, replyThreadState);
                 }
                 return;
             }
@@ -156,7 +257,7 @@ class CommentViewHolder : ViewHolder {
                 comment.setUIHandler {
                     StateApp.instance.scopeOrNull?.launch(Dispatchers.Main) {
                         if (it.isAvailable && it == this@CommentViewHolder.comment)
-                            bind(it, readonly);
+                            bind(it, readonly, replyThreadParent, replyThreadState);
                     }
                 }
             }
@@ -175,7 +276,13 @@ class CommentViewHolder : ViewHolder {
         val date = comment.date;
         if (date != null) {
             _textMetadata.visibility = View.VISIBLE;
-            _textMetadata.text = " • ${date.toHumanNowDiffString()} ago";
+            _textMetadata.text = if (comment.isEdited)
+                itemView.context.getString(R.string.comment_metadata_age_edited, date.toHumanNowDiffString())
+            else
+                itemView.context.getString(R.string.comment_metadata_age, date.toHumanNowDiffString())
+        } else if (comment.isEdited) {
+            _textMetadata.visibility = View.VISIBLE
+            _textMetadata.setText(R.string.comment_metadata_edited)
         } else {
             _textMetadata.visibility = View.GONE;
         }
@@ -190,7 +297,32 @@ class CommentViewHolder : ViewHolder {
 
         _textBody.text = comment.message.fixHtmlLinks();
 
-        if (readonly) {
+        val sourceReactionColor = if (comment is PolycentricPlatformComment) {
+            null
+        } else {
+            comment.sourcePluginId
+                ?.let(StatePlatform.instance::getClientOrNull)
+                ?.resolvePlatformAccentColor(itemView.context)
+        }
+        _pillRatingLikesDislikes.setReactionColor(sourceReactionColor)
+
+        val hasPlatformRating = PlatformCommentUiPolicy.canReact(comment)
+        if (!readonly && comment !is PolycentricPlatformComment && hasPlatformRating) {
+            _pillRatingLikesDislikes.setPlatformMutationHandler(
+                canLike = PlatformCommentUiPolicy.canLike(comment),
+                canDislike = PlatformCommentUiPolicy.canDislike(comment)
+            ) { hasLiked, hasDisliked ->
+                val desired = if (hasLiked) {
+                    PlatformCommentReaction.LIKE
+                } else if (hasDisliked) {
+                    PlatformCommentReaction.DISLIKE
+                } else {
+                    PlatformCommentReaction.NONE
+                }
+                queuePlatformReaction(comment, desired)
+            }
+        }
+        if (readonly || (comment !is PolycentricPlatformComment && !hasPlatformRating)) {
             _layoutRating.visibility = View.VISIBLE;
             _pillRatingLikesDislikes.visibility = View.GONE;
 
@@ -230,29 +362,43 @@ class CommentViewHolder : ViewHolder {
                 val hasDisliked = StatePolycentric.instance.hasDisliked(comment.reference.toByteArray());
                 _pillRatingLikesDislikes.setRating(comment.rating, hasLiked, hasDisliked);
             } else {
-                _pillRatingLikesDislikes.setRating(comment.rating);
+                _pillRatingLikesDislikes.setRating(
+                    comment.rating,
+                    comment.userReaction == PlatformCommentReaction.LIKE,
+                    comment.userReaction == PlatformCommentReaction.DISLIKE,
+                    PlatformCommentUiPolicy.canDislike(comment)
+                );
             }
         }
 
         val replies = comment.replyCount ?: 0;
-        if (!readonly || replies > 0) {
+        val canReply = if (comment is PolycentricPlatformComment)
+            !readonly
+        else
+            PlatformCommentUiPolicy.canReply(comment)
+        val replyLocked = comment !is PolycentricPlatformComment && PlatformCommentUiPolicy.isReplyLocked(comment)
+        if (canReply || replies > 0) {
             _buttonReplies.visibility = View.VISIBLE;
-            _buttonReplies.text.text = "$replies " + itemView.context.getString(R.string.replies);
+            _buttonReplies.icon.setImageResource(if (replyLocked) R.drawable.ic_lock_18 else R.drawable.ic_forum)
+            _buttonReplies.alpha = if (replyLocked) 0.65f else 1.0f
+            _buttonReplies.text.text = itemView.context.resources.getQuantityString(R.plurals.reply_count, replies, replies)
         } else {
             _buttonReplies.visibility = View.GONE;
+            _buttonReplies.alpha = 1.0f
         }
 
-        val processHandle = StatePolycentric.instance.processHandle
-        if (processHandle != null && comment is PolycentricPlatformComment && processHandle.system == comment.eventPointer.system) {
-            _buttonDelete.visibility = View.VISIBLE
-        } else {
-            _buttonDelete.visibility = View.GONE
-        }
+        _buttonOptions.visibility = View.VISIBLE
 
         this.comment = comment;
     }
 
     companion object {
         private const val TAG = "CommentViewHolder";
+        private const val MENU_GROUP_COMMENT = 1
+        private const val MENU_COPY = 1
+        private const val MENU_EDIT = 2
+        private const val MENU_DELETE = 3
+        private const val MENU_REPLY = 4
+        private const val MENU_REPLY_LOCKED = 5
     }
 }

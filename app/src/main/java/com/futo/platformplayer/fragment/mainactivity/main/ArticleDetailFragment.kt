@@ -33,6 +33,7 @@ import com.futo.platformplayer.api.media.models.Thumbnails
 import com.futo.platformplayer.api.media.models.article.IPlatformArticle
 import com.futo.platformplayer.api.media.models.article.IPlatformArticleDetails
 import com.futo.platformplayer.api.media.models.comments.PolycentricPlatformComment
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentUiPolicy
 import com.futo.platformplayer.api.media.models.contents.IPlatformContent
 import com.futo.platformplayer.api.media.models.locked.IPlatformLockedContent
 import com.futo.platformplayer.api.media.models.nested.IPlatformNestedContent
@@ -268,7 +269,7 @@ class ArticleDetailFragment : MainFragment {
                             parentComment = newComment;
                         });
                 } else {
-                    _repliesOverlay.load(_commentType!!, metadata, null, null, c, { StatePlatform.instance.getSubComments(c) });
+                    _repliesOverlay.load(_commentType!!, metadata, c.contextUrl, null, c, { StatePlatform.instance.getSubComments(c) });
                 }
 
                 setRepliesOverlayVisible(isVisible = true, animate = true);
@@ -634,7 +635,7 @@ class ArticleDetailFragment : MainFragment {
         private fun fetchComments() {
             Logger.i(TAG, "fetchComments")
             _article?.let {
-                _commentsList.load(true) { StatePlatform.instance.getComments(it); };
+                _commentsList.load(false) { StatePlatform.instance.getComments(it); };
             }
         }
 
@@ -665,7 +666,12 @@ class ArticleDetailFragment : MainFragment {
                 _buttonPolycentric.setTextColor(resources.getColor(if (!commentType) R.color.white else R.color.gray_ac))
 
                 if (commentType) {
-                    _addCommentView.visibility = View.GONE;
+                    val canCreate = PlatformCommentUiPolicy.canCreate(
+                        (_article?.url ?: _articleOverview?.url)?.let {
+                            StatePlatform.instance.getContentClientOrNull(it)?.capabilities
+                        }
+                    )
+                    _addCommentView.visibility = if (canCreate) View.VISIBLE else View.GONE;
 
                     if (forceReload || changed) {
                         fetchComments();

@@ -21,6 +21,7 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.futo.platformplayer.activities.MainActivity
+import com.futo.platformplayer.api.media.models.comments.CommentDestination
 import com.futo.platformplayer.api.media.models.comments.IPlatformComment
 import com.futo.platformplayer.api.media.platforms.js.SourcePluginConfig
 import com.futo.platformplayer.casting.StateCasting
@@ -538,8 +539,27 @@ class UIDialogs {
             toast.show()
         }
 
-        fun showCommentDialog(context: Context, contextUrl: String, ref: Protocol.Reference, onCommentAdded: (comment: IPlatformComment) -> Unit) {
-            val dialog = CommentDialog(context, contextUrl, ref);
+        fun showCommentDialog(
+            context: Context,
+            contextUrl: String,
+            ref: Protocol.Reference?,
+            platformClient: com.futo.platformplayer.api.media.IPlatformClient? = null,
+            parentPlatformComment: IPlatformComment? = null,
+            preferredDestination: CommentDestination? = null,
+            restrictToPreferredDestination: Boolean = false,
+            initialText: String = "",
+            onCommentAdded: (comment: IPlatformComment) -> Unit
+        ) {
+            val dialog = CommentDialog(
+                context,
+                contextUrl,
+                ref,
+                platformClient,
+                parentPlatformComment,
+                initialText = initialText,
+                preferredDestination = preferredDestination,
+                restrictToPreferredDestination = restrictToPreferredDestination
+            );
             registerDialogOpened(dialog);
             dialog.setOnDismissListener { registerDialogClosed(dialog) };
             dialog.onCommentAdded.subscribe { onCommentAdded(it); };

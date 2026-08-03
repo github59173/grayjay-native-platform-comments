@@ -720,4 +720,8 @@
         <item>Итальянский (IT)</item>
         <item>Турецкий (TR)</item>
     </string-array>
+    <string name="add_a_destination_comment">Добавить комментарий в %1$s…</string>
+    <string name="comments_are_locked">Комментарии заблокированы</string>
+    <string name="destination_comments_are_locked">Комментарии %1$s заблокированы</string>
+    <string name="replies_are_locked">Ответы заблокированы</string>
 </resources>

@@ -1,6 +1,7 @@
 package com.futo.platformplayer.api.media.platforms.js
 
 import android.content.Context
+import android.graphics.Color
 import com.caoccao.javet.values.V8Value
 import com.caoccao.javet.values.primitive.V8ValueBoolean
 import com.caoccao.javet.values.primitive.V8ValueInteger
@@ -16,6 +17,9 @@ import com.futo.platformplayer.api.media.models.ResultCapabilities
 import com.futo.platformplayer.api.media.models.channels.IPlatformChannel
 import com.futo.platformplayer.api.media.models.chapters.IChapter
 import com.futo.platformplayer.api.media.models.comments.IPlatformComment
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentCapability
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentMutationError
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentMutationResult
 import com.futo.platformplayer.api.media.models.contents.IPlatformContent
 import com.futo.platformplayer.api.media.models.contents.IPlatformContentDetails
 import com.futo.platformplayer.api.media.models.live.ILiveChatWindowDescriptor
@@ -24,6 +28,10 @@ import com.futo.platformplayer.api.media.models.playback.IPlaybackTracker
 import com.futo.platformplayer.api.media.models.playlists.IPlatformPlaylist
 import com.futo.platformplayer.api.media.models.playlists.IPlatformPlaylistDetails
 import com.futo.platformplayer.api.media.models.video.IPlatformVideo
+import com.futo.platformplayer.api.media.models.video.PlatformVideoReaction
+import com.futo.platformplayer.api.media.models.video.PlatformVideoReactionError
+import com.futo.platformplayer.api.media.models.video.PlatformVideoReactionResult
+import com.futo.platformplayer.api.media.models.video.PlatformVideoReactionState
 import com.futo.platformplayer.api.media.platforms.js.internal.JSCallDocs
 import com.futo.platformplayer.api.media.platforms.js.internal.JSDocs
 import com.futo.platformplayer.api.media.platforms.js.internal.JSDocsParameter
@@ -38,6 +46,7 @@ import com.futo.platformplayer.api.media.platforms.js.models.JSChannelPager
 import com.futo.platformplayer.api.media.platforms.js.models.JSChapter
 import com.futo.platformplayer.api.media.platforms.js.models.JSComment
 import com.futo.platformplayer.api.media.platforms.js.models.JSCommentPager
+import com.futo.platformplayer.api.media.platforms.js.models.JSCommentMutationResult
 import com.futo.platformplayer.api.media.platforms.js.models.JSContentPager
 import com.futo.platformplayer.api.media.platforms.js.models.JSLiveChatWindowDescriptor
 import com.futo.platformplayer.api.media.platforms.js.models.JSLiveEventPager
@@ -45,6 +54,7 @@ import com.futo.platformplayer.api.media.platforms.js.models.JSPlaybackTracker
 import com.futo.platformplayer.api.media.platforms.js.models.JSPlaylistDetails
 import com.futo.platformplayer.api.media.platforms.js.models.JSPlaylistPager
 import com.futo.platformplayer.api.media.platforms.js.models.JSVideoPager
+import com.futo.platformplayer.api.media.platforms.js.models.JSVideoReactionResult
 import com.futo.platformplayer.api.media.structures.EmptyPager
 import com.futo.platformplayer.api.media.structures.IPager
 import com.futo.platformplayer.constructs.Event1
@@ -54,6 +64,8 @@ import com.futo.platformplayer.engine.exceptions.PluginEngineException
 import com.futo.platformplayer.engine.exceptions.ScriptCaptchaRequiredException
 import com.futo.platformplayer.engine.exceptions.ScriptException
 import com.futo.platformplayer.engine.exceptions.ScriptImplementationException
+import com.futo.platformplayer.engine.exceptions.ScriptLoginRequiredException
+import com.futo.platformplayer.engine.exceptions.ScriptUnavailableException
 import com.futo.platformplayer.engine.exceptions.ScriptValidationException
 import com.futo.platformplayer.engine.packages.PackageBridge
 import com.futo.platformplayer.logging.Logger
@@ -105,6 +117,16 @@ open class JSClient : IPlatformClient {
     override val id: String get() = config.id;
     override val name: String get() = config.name;
     override val icon: ImageVariable get() = StatePlatform.instance.getPlatformIcon(config.id) ?: ImageVariable(config.absoluteIconUrl, null, null)
+    override val accentColor: Int? by lazy {
+        config.accentColor?.trim()?.takeIf { it.isNotEmpty() }?.let { value ->
+            try {
+                Color.parseColor(value)
+            } catch (e: IllegalArgumentException) {
+                Logger.w(TAG, "Source '${config.name}' supplied invalid accentColor '$value'.", e)
+                null
+            }
+        }
+    }
     override var capabilities: PlatformClientCapabilities = PlatformClientCapabilities();
 
     private var _busyAction = "";
@@ -274,7 +296,16 @@ open class JSClient : IPlatformClient {
             hasPeekChannelContents = plugin.executeBoolean("!!source.peekChannelContents") ?: false,
             hasGetChannelPlaylists = plugin.executeBoolean("!!source.getChannelPlaylists") ?: false,
             hasGetContentRecommendations = plugin.executeBoolean("!!source.getContentRecommendations") ?: false,
-            hasGetUserHistory = plugin.executeBoolean("!!source.getUserHistory") ?: false
+            hasGetUserHistory = plugin.executeBoolean("!!source.getUserHistory") ?: false,
+            hasCommentsCreate = plugin.executeBoolean("!!source.createComment") ?: false,
+            hasCommentsReply = plugin.executeBoolean("!!source.replyToComment") ?: false,
+            hasCommentsEdit = plugin.executeBoolean("!!source.editComment") ?: false,
+            hasCommentsDelete = plugin.executeBoolean("!!source.deleteComment") ?: false,
+            hasCommentsLike = plugin.executeBoolean("!!source.likeComment") ?: false,
+            hasCommentsDislike = plugin.executeBoolean("!!source.dislikeComment") ?: false,
+            hasGetCommentingIdentity = plugin.executeBoolean("!!source.getCommentingIdentity") ?: false,
+            hasVideoReactionState = plugin.executeBoolean("!!source.getVideoReactionState") ?: false,
+            hasVideoReactionMutation = plugin.executeBoolean("!!source.setVideoReaction") ?: false
         );
 
         try {
@@ -628,6 +659,201 @@ open class JSClient : IPlatformClient {
         ensureEnabled();
         return comment.getReplies(this) ?: JSCommentPager(config, this,
                 plugin.executeTyped("source.getSubComments(${Json.encodeToString(comment as JSComment)})"));
+    }
+
+    @JSOptional
+    @JSDocs(40, "source.createComment(contentUrl, message)", "Creates a native platform comment")
+    override fun createComment(contentUrl: String, message: String): PlatformCommentMutationResult {
+        if (!capabilities.hasCommentsCreate)
+            return PlatformCommentMutationResult.unsupported();
+        return executeCommentMutation(
+            "createComment",
+            "source.createComment(${Json.encodeToString(contentUrl)}, ${Json.encodeToString(message)})"
+        );
+    }
+
+    @JSOptional
+    @JSDocs(41, "source.replyToComment(comment, message)", "Replies to a native platform comment")
+    override fun replyToComment(comment: IPlatformComment, message: String): PlatformCommentMutationResult =
+        executeCommentMutationForComment(
+            "replyToComment", comment, PlatformCommentCapability.COMMENTS_REPLY,
+            "source.replyToComment(${serializeComment(comment)}, ${Json.encodeToString(message)})"
+        );
+
+    @JSOptional
+    @JSDocs(42, "source.editComment(comment, message)", "Edits an owned native platform comment")
+    override fun editComment(comment: IPlatformComment, message: String): PlatformCommentMutationResult {
+        val result = executeCommentMutationForComment(
+            "editComment", comment, PlatformCommentCapability.COMMENTS_EDIT,
+            "source.editComment(${serializeComment(comment)}, ${Json.encodeToString(message)})"
+        )
+        if (!result.success || comment !is JSComment)
+            return result
+        // The server has acknowledged the update. Keep using the same
+        // JSComment instance so subsequent edit/delete calls still serialize
+        // through this client even when YouTube's compact update response does
+        // not contain a complete comment renderer.
+        comment.updateAfterAcknowledgedEdit(message)
+        return result.copy(comment = comment)
+    }
+
+    @JSOptional
+    @JSDocs(43, "source.deleteComment(comment)", "Deletes an owned native platform comment")
+    override fun deleteComment(comment: IPlatformComment): PlatformCommentMutationResult =
+        executeCommentMutationForComment(
+            "deleteComment", comment, PlatformCommentCapability.COMMENTS_DELETE,
+            "source.deleteComment(${serializeComment(comment)})"
+        );
+
+    @JSOptional
+    @JSDocs(44, "source.likeComment(comment, enabled)", "Sets or clears the current user's like")
+    override fun likeComment(comment: IPlatformComment, enabled: Boolean): PlatformCommentMutationResult =
+        executeCommentMutationForComment(
+            "likeComment", comment, PlatformCommentCapability.COMMENTS_LIKE,
+            "source.likeComment(${serializeComment(comment)}, ${Json.encodeToString(enabled)})"
+        );
+
+    @JSOptional
+    @JSDocs(45, "source.dislikeComment(comment, enabled)", "Sets or clears the current user's dislike")
+    override fun dislikeComment(comment: IPlatformComment, enabled: Boolean): PlatformCommentMutationResult =
+        executeCommentMutationForComment(
+            "dislikeComment", comment, PlatformCommentCapability.COMMENTS_DISLIKE,
+            "source.dislikeComment(${serializeComment(comment)}, ${Json.encodeToString(enabled)})"
+        );
+
+    override fun getCommentingIdentity(): String? {
+        if (!capabilities.hasGetCommentingIdentity)
+            return null;
+        return try {
+            isBusyWith("getCommentingIdentity") {
+                ensureEnabled();
+                plugin.executeTyped<V8ValueString>("source.getCommentingIdentity()").value;
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    @JSOptional
+    @JSDocs(46, "source.getVideoReactionState(contentUrl)", "Gets the current user's native-platform video reaction")
+    override fun getVideoReactionState(contentUrl: String): PlatformVideoReactionState {
+        if (!capabilities.hasVideoReactionState)
+            return PlatformVideoReactionState.unsupported()
+        return try {
+            isBusyWith("getVideoReactionState") {
+                ensureEnabled()
+                val value = plugin.executeTyped<V8Value>(
+                    "source.getVideoReactionState(${Json.encodeToString(contentUrl)})"
+                )
+                if (value !is V8ValueObject)
+                    return@isBusyWith PlatformVideoReactionState(
+                        message = "The source returned an invalid video reaction state",
+                        error = PlatformVideoReactionError.UPSTREAM_RESPONSE_CHANGED
+                    )
+                JSVideoReactionResult.stateFromV8(this, value)
+            }
+        } catch (ex: Throwable) {
+            PlatformVideoReactionState(
+                message = ex.message?.lineSequence()?.firstOrNull(),
+                error = videoReactionError(ex)
+            )
+        }
+    }
+
+    @JSOptional
+    @JSDocs(47, "source.setVideoReaction(contentUrl, reaction)", "Sets or clears the current user's native-platform video reaction")
+    override fun setVideoReaction(
+        contentUrl: String,
+        reaction: PlatformVideoReaction
+    ): PlatformVideoReactionResult {
+        if (!capabilities.hasVideoReactionMutation)
+            return PlatformVideoReactionResult.unsupported()
+        return try {
+            isBusyWith("setVideoReaction") {
+                ensureEnabled()
+                val value = plugin.executeTyped<V8Value>(
+                    "source.setVideoReaction(${Json.encodeToString(contentUrl)}, ${Json.encodeToString(reaction.name)})"
+                )
+                if (value !is V8ValueObject)
+                    return@isBusyWith PlatformVideoReactionResult(
+                        success = false,
+                        message = "The source returned an invalid video reaction response",
+                        error = PlatformVideoReactionError.UPSTREAM_RESPONSE_CHANGED
+                    )
+                JSVideoReactionResult.mutationFromV8(this, value)
+            }
+        } catch (ex: Throwable) {
+            val error = videoReactionError(ex)
+            PlatformVideoReactionResult(
+                success = false,
+                retryable = error == PlatformVideoReactionError.NETWORK_ERROR ||
+                    error == PlatformVideoReactionError.RATE_LIMITED,
+                message = ex.message?.lineSequence()?.firstOrNull(),
+                error = error
+            )
+        }
+    }
+
+    private fun videoReactionError(ex: Throwable): PlatformVideoReactionError = when (ex) {
+        is ScriptLoginRequiredException -> PlatformVideoReactionError.AUTH_REQUIRED
+        else -> when {
+            ex.message?.contains("network", ignoreCase = true) == true -> PlatformVideoReactionError.NETWORK_ERROR
+            ex.message?.contains("rate", ignoreCase = true) == true -> PlatformVideoReactionError.RATE_LIMITED
+            else -> PlatformVideoReactionError.UNKNOWN
+        }
+    }
+
+    private fun serializeComment(comment: IPlatformComment): String {
+        if (comment !is JSComment)
+            throw IllegalArgumentException("Comment does not belong to this JavaScript source");
+        return Json.encodeToString(comment);
+    }
+
+    private fun executeCommentMutationForComment(
+        action: String,
+        comment: IPlatformComment,
+        capability: PlatformCommentCapability,
+        invocation: String
+    ): PlatformCommentMutationResult {
+        if (!capabilities.supports(capability) || capability !in comment.capabilities)
+            return PlatformCommentMutationResult.unsupported();
+        val result = executeCommentMutation(action, invocation);
+        if (result.success && comment is JSComment &&
+            (action == "likeComment" || action == "dislikeComment"))
+            comment.updateUserReaction(result.reaction);
+        return result;
+    }
+
+    private fun executeCommentMutation(action: String, invocation: String): PlatformCommentMutationResult {
+        return try {
+            isBusyWith(action) {
+                ensureEnabled();
+                val value = plugin.executeTyped<V8Value>(invocation);
+                if (value !is V8ValueObject)
+                    return@isBusyWith PlatformCommentMutationResult(
+                        success = false,
+                        message = "The source returned an invalid comment mutation response",
+                        error = PlatformCommentMutationError.UPSTREAM_RESPONSE_CHANGED
+                    );
+                return@isBusyWith JSCommentMutationResult.fromV8(this, value);
+            }
+        } catch (ex: Throwable) {
+            val error = when (ex) {
+                is ScriptLoginRequiredException -> PlatformCommentMutationError.SESSION_EXPIRED
+                is ScriptUnavailableException -> PlatformCommentMutationError.COMMENTS_DISABLED
+                else -> when {
+                    ex.message?.contains("network", ignoreCase = true) == true -> PlatformCommentMutationError.NETWORK_ERROR
+                    ex.message?.contains("rate", ignoreCase = true) == true -> PlatformCommentMutationError.RATE_LIMITED
+                    else -> PlatformCommentMutationError.UNKNOWN
+                }
+            }
+            PlatformCommentMutationResult(
+                success = false,
+                retryable = error == PlatformCommentMutationError.NETWORK_ERROR || error == PlatformCommentMutationError.RATE_LIMITED,
+                message = ex.message?.lineSequence()?.firstOrNull(),
+                error = error
+            )
+        }
     }
 
     @JSDocs(18, "source.getLiveChatWindow(url)", "Gets live events for a livestream")

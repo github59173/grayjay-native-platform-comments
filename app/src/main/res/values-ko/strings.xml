@@ -720,4 +720,8 @@
         <item>이탈리아어 (IT)</item>
         <item>터키어 (TR)</item>
     </string-array>
+    <string name="add_a_destination_comment">%1$s 댓글 추가…</string>
+    <string name="comments_are_locked">댓글이 잠겨 있습니다</string>
+    <string name="destination_comments_are_locked">%1$s 댓글이 잠겨 있습니다</string>
+    <string name="replies_are_locked">답글이 잠겨 있습니다</string>
 </resources>

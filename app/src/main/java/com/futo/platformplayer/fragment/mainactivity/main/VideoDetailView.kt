@@ -35,6 +35,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.compose.ui.text.toLowerCase
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -62,11 +63,14 @@ import com.futo.platformplayer.api.media.models.PlatformAuthorLink
 import com.futo.platformplayer.api.media.models.PlatformAuthorMembershipLink
 import com.futo.platformplayer.api.media.models.chapters.ChapterType
 import com.futo.platformplayer.api.media.models.chapters.IChapter
+import com.futo.platformplayer.api.media.models.comments.CommentDestination
 import com.futo.platformplayer.api.media.models.comments.PolycentricPlatformComment
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentUiPolicy
 import com.futo.platformplayer.api.media.models.contents.IPlatformContent
 import com.futo.platformplayer.api.media.models.live.ILiveChatWindowDescriptor
 import com.futo.platformplayer.api.media.models.live.IPlatformLiveEvent
 import com.futo.platformplayer.api.media.models.playback.IPlaybackTracker
+import com.futo.platformplayer.api.media.models.ratings.IRating
 import com.futo.platformplayer.api.media.models.ratings.RatingLikeDislikes
 import com.futo.platformplayer.api.media.models.ratings.RatingLikes
 import com.futo.platformplayer.api.media.models.streams.VideoUnMuxedSourceDescriptor
@@ -82,6 +86,8 @@ import com.futo.platformplayer.api.media.models.subtitles.ISubtitleSource
 import com.futo.platformplayer.api.media.models.video.IPlatformVideo
 import com.futo.platformplayer.api.media.models.video.IPlatformVideoDetails
 import com.futo.platformplayer.api.media.models.video.LocalVideoDetails
+import com.futo.platformplayer.api.media.models.video.PlatformVideoReaction
+import com.futo.platformplayer.api.media.models.video.PlatformVideoReactionResult
 import com.futo.platformplayer.api.media.models.video.SerializedPlatformVideo
 import com.futo.platformplayer.api.media.platforms.js.JSClient
 import com.futo.platformplayer.api.media.platforms.js.SourcePluginConfig
@@ -112,6 +118,7 @@ import com.futo.platformplayer.exceptions.UnsupportedCastException
 import com.futo.platformplayer.fixHtmlLinks
 import com.futo.platformplayer.fixHtmlWhitespace
 import com.futo.platformplayer.getNowDiffSeconds
+import com.futo.platformplayer.resolvePlatformAccentColor
 import com.futo.platformplayer.helpers.VideoHelper
 import com.futo.platformplayer.logging.Logger
 import com.futo.platformplayer.models.Subscription
@@ -166,6 +173,7 @@ import com.futo.platformplayer.views.overlays.slideup.SlideUpMenuTitle
 import com.futo.platformplayer.views.pills.PillRatingLikesDislikes
 import com.futo.platformplayer.views.pills.RoundButton
 import com.futo.platformplayer.views.pills.RoundButtonGroup
+import com.futo.platformplayer.views.pills.VideoReactionNetwork
 import com.futo.platformplayer.views.platform.PlatformIndicator
 import com.futo.platformplayer.views.segments.CommentsList
 import com.futo.platformplayer.views.subscriptions.SubscribeButton
@@ -304,6 +312,24 @@ class VideoDetailView : ConstraintLayout {
     private val _layoutRating: LinearLayout;
     private val _imageDislikeIcon: ImageView;
     private val _imageLikeIcon: ImageView;
+
+    private var _videoReactionGeneration = 0
+    private var _videoReactionSelectorEnabled = false
+    private var _videoReactionMutationInProgress = false
+    private var _polycentricVideoReactionLoaded = false
+    private var _platformVideoReactionLoaded = false
+    private var _platformVideoReactionEligible = false
+    private var _platformVideoReactionAvailable = false
+    private var _platformVideoCanLike = false
+    private var _platformVideoCanDislike = false
+    private var _platformVideoReactionColor = 0
+    private var _platformVideoReactionName = ""
+    private var _polycentricVideoRating = RatingLikeDislikes(0, 0)
+    private var _polycentricVideoReaction = PlatformVideoReaction.NONE
+    private var _platformVideoReaction = PlatformVideoReaction.NONE
+    private var _platformVideoLikes = 0L
+    private var _platformVideoDislikes = 0L
+    private var _platformVideoHasDislikeCount = false
 
     private val _monetization: MonetizationView;
 
@@ -530,6 +556,10 @@ class VideoDetailView : ConstraintLayout {
             _commentsCount = count;
             //TODO: Why is this here ? updateTabs(false);
         };
+        _commentsList.onCommentingStateChanged.subscribe { state ->
+            if (_tabIndex == 1)
+                _addCommentView.setCommentingState(state)
+        }
 
         if (StatePolycentric.instance.enabled) {
             _buttonPolycentric.setOnClickListener {
@@ -894,7 +924,7 @@ class VideoDetailView : ConstraintLayout {
                         parentComment = newComment;
                     });
             } else {
-                _container_content_replies.load(_tabIndex!! != 0, metadata, null, null, c, { StatePlatform.instance.getSubComments(c) });
+                _container_content_replies.load(_tabIndex!! != 0, metadata, c.contextUrl, null, c, { StatePlatform.instance.getSubComments(c) });
             }
             switchContentView(_container_content_replies);
         };
@@ -1149,6 +1179,9 @@ class VideoDetailView : ConstraintLayout {
                 reloadVideo();
                 _slideUpOverlay?.hide();
             } else null).filterNotNull();
+        (buttons + _buttonMore).forEach { button ->
+            button.icon.setBackgroundResource(R.drawable.background_video_action)
+        }
         if(!_buttonPinStore.getAllValues().any())
             _buttonPins.setButtons(*(buttons + listOf(_buttonMore)).toTypedArray());
         else {
@@ -1299,6 +1332,9 @@ class VideoDetailView : ConstraintLayout {
     fun onDestroy() {
         Logger.i(TAG, "onDestroy");
         _destroyed = true;
+        _videoReactionGeneration++
+        _rating.onLikeDislikeUpdated.remove(this)
+        _rating.setPlatformMutationHandler()
         _artworkTarget?.let { Glide.with(context).clear(it) }
         _artworkTarget = null
         _player.setArtwork(null)
@@ -1740,107 +1776,8 @@ class VideoDetailView : ConstraintLayout {
         }
         _subTitle.text = subTitleSegments.joinToString(" • ");
 
-        _rating.onLikeDislikeUpdated.remove(this);
-
-        _rating.visibility = View.GONE;
-
-        if (StatePolycentric.instance.enabled && !(video is LocalVideoDetails)) {
-            fragment.lifecycleScope.launch(Dispatchers.IO) {
-                try {
-                    val queryReferencesResponse = ApiMethods.getQueryReferences(
-                        ApiMethods.SERVER, ref, null, null,
-                        arrayListOf(
-                            Protocol.QueryReferencesRequestCountLWWElementReferences.newBuilder()
-                                .setFromType(ContentType.OPINION.value).setValue(
-                                    ByteString.copyFrom(Opinion.like.data)
-                                ).build(),
-                            Protocol.QueryReferencesRequestCountLWWElementReferences.newBuilder()
-                                .setFromType(ContentType.OPINION.value).setValue(
-                                    ByteString.copyFrom(Opinion.dislike.data)
-                                ).build()
-                        ),
-                        extraByteReferences = listOfNotNull(extraBytesRef)
-                    );
-
-                    val likes = queryReferencesResponse.countsList[0];
-                    val dislikes = queryReferencesResponse.countsList[1];
-                    val hasLiked =
-                        StatePolycentric.instance.hasLiked(ref.toByteArray())/* || extraBytesRef?.let { StatePolycentric.instance.hasLiked(it) } ?: false*/;
-                    val hasDisliked =
-                        StatePolycentric.instance.hasDisliked(ref.toByteArray())/* || extraBytesRef?.let { StatePolycentric.instance.hasDisliked(it) } ?: false*/;
-
-                    withContext(Dispatchers.Main) {
-                        _rating.visibility = View.VISIBLE;
-                        _rating.setRating(
-                            RatingLikeDislikes(likes, dislikes),
-                            hasLiked,
-                            hasDisliked
-                        );
-                        _rating.onLikeDislikeUpdated.subscribe(this@VideoDetailView) { args ->
-                            if (args.hasLiked) {
-                                args.processHandle.opinion(ref, Opinion.like);
-                            } else if (args.hasDisliked) {
-                                args.processHandle.opinion(ref, Opinion.dislike);
-                            } else {
-                                args.processHandle.opinion(ref, Opinion.neutral);
-                            }
-
-                            fragment.lifecycleScope.launch(Dispatchers.IO) {
-                                try {
-                                    Logger.i(TAG, "Started backfill");
-                                    args.processHandle.fullyBackfillServersAnnounceExceptions();
-                                    Logger.i(TAG, "Finished backfill");
-                                } catch (e: Throwable) {
-                                    Logger.e(TAG, "Failed to backfill servers", e)
-                                }
-                            }
-
-                            StatePolycentric.instance.updateLikeMap(
-                                ref,
-                                args.hasLiked,
-                                args.hasDisliked
-                            )
-                        };
-                    }
-                } catch (e: Throwable) {
-                    Logger.e(TAG, "Failed to get polycentric likes/dislikes.", e);
-                    fragment.lifecycleScope.launch(Dispatchers.Main) {
-                        _rating.visibility = View.GONE;
-                    }
-                }
-            }
-        }
-
-        when (video.rating) {
-            is RatingLikeDislikes -> {
-                val r = video.rating as RatingLikeDislikes;
-                _layoutRating.visibility = View.VISIBLE;
-
-                _textLikes.visibility = View.VISIBLE;
-                _imageLikeIcon.visibility = View.VISIBLE;
-                _textLikes.text = r.likes.toHumanNumber();
-
-                _imageDislikeIcon.visibility = View.VISIBLE;
-                _textDislikes.visibility = View.VISIBLE;
-                _textDislikes.text = r.dislikes.toHumanNumber();
-            }
-
-            is RatingLikes -> {
-                val r = video.rating as RatingLikes;
-                _layoutRating.visibility = View.VISIBLE;
-
-                _textLikes.visibility = View.VISIBLE;
-                _imageLikeIcon.visibility = View.VISIBLE;
-                _textLikes.text = r.likes.toHumanNumber();
-
-                _imageDislikeIcon.visibility = View.GONE;
-                _textDislikes.visibility = View.GONE;
-            }
-
-            else -> {
-                _layoutRating.visibility = View.GONE;
-            }
-        }
+        setPlatformVideoRating(video.rating)
+        setupVideoReactionSelector(video, ref, extraBytesRef)
 
 
         //Overlay
@@ -1917,8 +1854,8 @@ class VideoDetailView : ConstraintLayout {
             _buttonSubscribe.visibility = View.VISIBLE
             _buttonMore.visibility = View.VISIBLE
             _buttonPins.visibility = View.VISIBLE
-            _layoutRating.visibility = View.VISIBLE
-            _rating.visibility = View.VISIBLE;
+            _layoutRating.visibility = if (shouldUseDualVideoReactionControl()) View.GONE else View.VISIBLE
+            _rating.visibility = if (_videoReactionSelectorEnabled) View.VISIBLE else View.GONE;
             _layoutChangeBottomSection.visibility = View.VISIBLE
         }
 
@@ -1927,6 +1864,401 @@ class VideoDetailView : ConstraintLayout {
             _taskLoadRecommendations.run(videoDetail.url)
         }
     }
+
+    private fun setupVideoReactionSelector(
+        video: IPlatformVideoDetails,
+        ref: Protocol.Reference,
+        extraBytesRef: ByteArray?
+    ) {
+        val generation = ++_videoReactionGeneration
+        val videoUrl = video.url
+        _rating.onLikeDislikeUpdated.remove(this)
+        _rating.setPlatformMutationHandler()
+        _rating.setLoading(false)
+        _rating.visibility = View.GONE
+
+        _videoReactionMutationInProgress = false
+        _videoReactionSelectorEnabled = StatePolycentric.instance.enabled && video !is LocalVideoDetails
+        _polycentricVideoReactionLoaded = !_videoReactionSelectorEnabled
+        _platformVideoReactionLoaded = false
+        _platformVideoReactionEligible = false
+        _platformVideoReactionAvailable = false
+        _platformVideoCanLike = false
+        _platformVideoCanDislike = false
+        _polycentricVideoRating = RatingLikeDislikes(0, 0)
+        _polycentricVideoReaction = PlatformVideoReaction.NONE
+        _platformVideoReaction = PlatformVideoReaction.NONE
+
+        if (!_videoReactionSelectorEnabled) return
+
+        // PlatformID is assigned by the source while parsing the video. Prefer
+        // that O(1) lookup so merely rendering the controls does not execute a
+        // JavaScript URL matcher on Android's main thread.
+        val platformClient = video.id.pluginId
+            ?.let { StatePlatform.instance.getClientOrNull(it) }
+            ?: StatePlatform.instance.getContentClientOrNull(videoUrl)
+        _platformVideoReactionEligible = platformClient?.capabilities?.hasVideoReactions == true
+        _platformVideoReactionColor = platformClient?.resolvePlatformAccentColor(context)
+            ?: ContextCompat.getColor(context, R.color.white)
+        _platformVideoReactionName = platformClient?.name.orEmpty()
+        _platformVideoReactionLoaded = !_platformVideoReactionEligible
+
+        _rating.visibility = View.VISIBLE
+        _rating.setLoading(true)
+        renderVideoReactionSelector(generation, videoUrl, ref)
+
+        fragment.lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val response = ApiMethods.getQueryReferences(
+                    ApiMethods.SERVER,
+                    ref,
+                    null,
+                    null,
+                    arrayListOf(
+                        Protocol.QueryReferencesRequestCountLWWElementReferences.newBuilder()
+                            .setFromType(ContentType.OPINION.value)
+                            .setValue(ByteString.copyFrom(Opinion.like.data))
+                            .build(),
+                        Protocol.QueryReferencesRequestCountLWWElementReferences.newBuilder()
+                            .setFromType(ContentType.OPINION.value)
+                            .setValue(ByteString.copyFrom(Opinion.dislike.data))
+                            .build()
+                    ),
+                    extraByteReferences = listOfNotNull(extraBytesRef)
+                )
+                val rating = RatingLikeDislikes(
+                    response.countsList.getOrElse(0) { 0L },
+                    response.countsList.getOrElse(1) { 0L }
+                )
+                val reaction = getLocalPolycentricVideoReaction(ref)
+                withContext(Dispatchers.Main) {
+                    if (!isCurrentVideoReactionRequest(generation, videoUrl)) return@withContext
+                    _polycentricVideoRating = rating
+                    _polycentricVideoReaction = reaction
+                    _polycentricVideoReactionLoaded = true
+                    renderVideoReactionSelector(generation, videoUrl, ref)
+                }
+            } catch (e: Throwable) {
+                Logger.e(TAG, "Failed to get Polycentric video reactions.", e)
+                withContext(Dispatchers.Main) {
+                    if (!isCurrentVideoReactionRequest(generation, videoUrl)) return@withContext
+                    // Opinion counts are remote, but the locally persisted opinion is still usable.
+                    _polycentricVideoReaction = getLocalPolycentricVideoReaction(ref)
+                    _polycentricVideoReactionLoaded = true
+                    renderVideoReactionSelector(generation, videoUrl, ref)
+                }
+            }
+        }
+
+        if (_platformVideoReactionEligible) {
+            fragment.lifecycleScope.launch(Dispatchers.IO) {
+                val state = try {
+                    StatePlatform.instance.getVideoReactionState(videoUrl)
+                } catch (e: Throwable) {
+                    Logger.e(TAG, "Failed to get platform video reaction state.", e)
+                    null
+                }
+                withContext(Dispatchers.Main) {
+                    if (!isCurrentVideoReactionRequest(generation, videoUrl)) return@withContext
+                    _platformVideoReactionLoaded = true
+                    _platformVideoReactionAvailable = state?.available == true
+                    _platformVideoCanLike = state?.canLike == true
+                    _platformVideoCanDislike = state?.canDislike == true
+                    _platformVideoReaction = state?.reaction ?: PlatformVideoReaction.NONE
+                    renderVideoReactionSelector(generation, videoUrl, ref)
+                }
+            }
+        }
+    }
+
+    private fun renderVideoReactionSelector(
+        generation: Int,
+        videoUrl: String,
+        ref: Protocol.Reference
+    ) {
+        if (!isCurrentVideoReactionRequest(generation, videoUrl) || !_videoReactionSelectorEnabled) return
+        _rating.visibility = View.VISIBLE
+        _rating.onLikeDislikeUpdated.remove(this)
+
+        if (shouldUseDualVideoReactionControl()) {
+            _layoutRating.visibility = View.GONE
+            _rating.setDualReactionState(
+                polycentricRating = _polycentricVideoRating,
+                polycentricReaction = _polycentricVideoReaction,
+                polycentricLoaded = _polycentricVideoReactionLoaded,
+                platformRating = RatingLikeDislikes(_platformVideoLikes, _platformVideoDislikes),
+                platformReaction = _platformVideoReaction,
+                platformLoaded = _platformVideoReactionLoaded && _platformVideoReactionAvailable,
+                platformColor = _platformVideoReactionColor,
+                platformName = _platformVideoReactionName,
+                platformCanLike = _platformVideoCanLike,
+                platformCanDislike = _platformVideoCanDislike,
+                platformDislikeCountAvailable = _platformVideoHasDislikeCount
+            ) { network, reaction ->
+                requestVideoReaction(generation, videoUrl, ref, network, reaction)
+            }
+            _rating.setLoading(_videoReactionMutationInProgress)
+            return
+        }
+
+        _rating.clearDualReactionMode()
+        renderPlatformVideoRating()
+        if (!_polycentricVideoReactionLoaded) {
+            _rating.setLoading(true)
+            return
+        }
+
+        _rating.setRating(
+            _polycentricVideoRating,
+            _polycentricVideoReaction == PlatformVideoReaction.LIKE,
+            _polycentricVideoReaction == PlatformVideoReaction.DISLIKE
+        )
+        bindPolycentricVideoReaction(ref)
+        _rating.setLoading(_videoReactionMutationInProgress)
+    }
+
+    private fun bindPolycentricVideoReaction(ref: Protocol.Reference) {
+        _rating.onLikeDislikeUpdated.remove(this)
+        _rating.onLikeDislikeUpdated.subscribe(this@VideoDetailView) { args ->
+            val reaction = when {
+                args.hasLiked -> PlatformVideoReaction.LIKE
+                args.hasDisliked -> PlatformVideoReaction.DISLIKE
+                else -> PlatformVideoReaction.NONE
+            }
+            applyPolycentricVideoReaction(args.processHandle, ref, reaction)
+            _polycentricVideoRating = RatingLikeDislikes(args.likes, args.dislikes)
+            _polycentricVideoReaction = reaction
+        }
+    }
+
+    private fun requestVideoReaction(
+        generation: Int,
+        videoUrl: String,
+        ref: Protocol.Reference,
+        network: VideoReactionNetwork,
+        reaction: PlatformVideoReaction
+    ) {
+        if (_videoReactionMutationInProgress || !isCurrentVideoReactionRequest(generation, videoUrl)) return
+        when (network) {
+            VideoReactionNetwork.POLYCENTRIC -> requestPolycentricVideoReaction(
+                generation,
+                videoUrl,
+                ref,
+                reaction
+            )
+            VideoReactionNetwork.PLATFORM -> requestPlatformVideoReaction(
+                generation,
+                videoUrl,
+                ref,
+                reaction
+            )
+        }
+    }
+
+    private fun requestPolycentricVideoReaction(
+        generation: Int,
+        videoUrl: String,
+        ref: Protocol.Reference,
+        desired: PlatformVideoReaction
+    ) {
+        val previous = _polycentricVideoReaction
+        if (desired == previous) return
+
+        val execute: (com.futo.polycentric.core.ProcessHandle) -> Unit = execute@{ processHandle ->
+            if (!isCurrentVideoReactionRequest(generation, videoUrl)) return@execute
+            _videoReactionMutationInProgress = true
+            renderVideoReactionSelector(generation, videoUrl, ref)
+            try {
+                applyPolycentricVideoReaction(processHandle, ref, desired)
+                _polycentricVideoRating = adjustReactionRating(
+                    _polycentricVideoRating,
+                    previous,
+                    desired
+                )
+                _polycentricVideoReaction = desired
+            } catch (e: Throwable) {
+                Logger.e(TAG, "Failed to persist the Polycentric video reaction.", e)
+                UIDialogs.toast(context, context.getString(R.string.failed_to_update_video_reaction))
+            } finally {
+                _videoReactionMutationInProgress = false
+                renderVideoReactionSelector(generation, videoUrl, ref)
+            }
+        }
+
+        val loginMessage = if (
+            desired == PlatformVideoReaction.DISLIKE ||
+            (desired == PlatformVideoReaction.NONE && previous == PlatformVideoReaction.DISLIKE)
+        ) {
+            context.getString(R.string.please_login_to_dislike)
+        } else {
+            context.getString(R.string.please_login_to_like)
+        }
+        StatePolycentric.instance.requireLogin(context, loginMessage) { execute(it) }
+    }
+
+    private fun requestPlatformVideoReaction(
+        generation: Int,
+        videoUrl: String,
+        ref: Protocol.Reference,
+        desired: PlatformVideoReaction
+    ) {
+        val previous = _platformVideoReaction
+        if (desired == previous) return
+        if (desired == PlatformVideoReaction.LIKE && !_platformVideoCanLike) {
+            UIDialogs.toast(context, context.getString(R.string.platform_video_like_unavailable))
+            return
+        }
+        if (
+            desired == PlatformVideoReaction.DISLIKE &&
+            (!_platformVideoCanDislike || !_platformVideoHasDislikeCount)
+        ) {
+            UIDialogs.toast(context, context.getString(R.string.platform_video_dislike_unavailable))
+            return
+        }
+
+        _videoReactionMutationInProgress = true
+        renderVideoReactionSelector(generation, videoUrl, ref)
+        fragment.lifecycleScope.launch(Dispatchers.IO) {
+            val result = try {
+                StatePlatform.instance.setVideoReaction(videoUrl, desired)
+            } catch (e: Throwable) {
+                Logger.e(TAG, "Platform video reaction failed.", e)
+                PlatformVideoReactionResult(success = false, message = e.message)
+            }
+            withContext(Dispatchers.Main) {
+                if (!isCurrentVideoReactionRequest(generation, videoUrl)) return@withContext
+                if (result.success) {
+                    adjustPlatformVideoRating(previous, result.reaction)
+                    _platformVideoReaction = result.reaction
+                } else {
+                    UIDialogs.toast(
+                        context,
+                        result.message ?: context.getString(R.string.failed_to_update_video_reaction)
+                    )
+                }
+                _videoReactionMutationInProgress = false
+                renderPlatformVideoRating()
+                renderVideoReactionSelector(generation, videoUrl, ref)
+            }
+        }
+    }
+
+    private fun applyPolycentricVideoReaction(
+        processHandle: com.futo.polycentric.core.ProcessHandle,
+        ref: Protocol.Reference,
+        reaction: PlatformVideoReaction
+    ) {
+        processHandle.opinion(
+            ref,
+            when (reaction) {
+                PlatformVideoReaction.LIKE -> Opinion.like
+                PlatformVideoReaction.DISLIKE -> Opinion.dislike
+                PlatformVideoReaction.NONE -> Opinion.neutral
+            }
+        )
+        StatePolycentric.instance.updateLikeMap(
+            ref,
+            reaction == PlatformVideoReaction.LIKE,
+            reaction == PlatformVideoReaction.DISLIKE
+        )
+        fragment.lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                processHandle.fullyBackfillServersAnnounceExceptions()
+            } catch (e: Throwable) {
+                Logger.e(TAG, "Failed to backfill Polycentric video reaction.", e)
+            }
+        }
+    }
+
+    private fun getLocalPolycentricVideoReaction(ref: Protocol.Reference): PlatformVideoReaction = when {
+        StatePolycentric.instance.hasLiked(ref.toByteArray()) -> PlatformVideoReaction.LIKE
+        StatePolycentric.instance.hasDisliked(ref.toByteArray()) -> PlatformVideoReaction.DISLIKE
+        else -> PlatformVideoReaction.NONE
+    }
+
+    private fun adjustReactionRating(
+        rating: RatingLikeDislikes,
+        previous: PlatformVideoReaction,
+        next: PlatformVideoReaction
+    ): RatingLikeDislikes = RatingLikeDislikes(
+        adjustReactionCount(rating.likes, previous, next, PlatformVideoReaction.LIKE),
+        adjustReactionCount(rating.dislikes, previous, next, PlatformVideoReaction.DISLIKE)
+    )
+
+    private fun adjustPlatformVideoRating(
+        previous: PlatformVideoReaction,
+        next: PlatformVideoReaction
+    ) {
+        _platformVideoLikes = adjustReactionCount(
+            _platformVideoLikes,
+            previous,
+            next,
+            PlatformVideoReaction.LIKE
+        )
+        _platformVideoDislikes = adjustReactionCount(
+            _platformVideoDislikes,
+            previous,
+            next,
+            PlatformVideoReaction.DISLIKE
+        )
+    }
+
+    private fun adjustReactionCount(
+        count: Long,
+        previous: PlatformVideoReaction,
+        next: PlatformVideoReaction,
+        countedReaction: PlatformVideoReaction
+    ): Long {
+        val removed = if (previous == countedReaction) 1L else 0L
+        val added = if (next == countedReaction) 1L else 0L
+        return (count - removed + added).coerceAtLeast(0L)
+    }
+
+    private fun setPlatformVideoRating(rating: IRating) {
+        _platformVideoHasDislikeCount = rating is RatingLikeDislikes
+        _platformVideoLikes = when (rating) {
+            is RatingLikeDislikes -> rating.likes
+            is RatingLikes -> rating.likes
+            else -> 0
+        }
+        _platformVideoDislikes = (rating as? RatingLikeDislikes)?.dislikes ?: 0
+        renderPlatformVideoRating()
+    }
+
+    private fun renderPlatformVideoRating() {
+        if (shouldUseDualVideoReactionControl()) {
+            _layoutRating.visibility = View.GONE
+            return
+        }
+        when (video?.rating) {
+            is RatingLikeDislikes -> {
+                _layoutRating.visibility = View.VISIBLE
+                _textLikes.visibility = View.VISIBLE
+                _imageLikeIcon.visibility = View.VISIBLE
+                _textLikes.text = _platformVideoLikes.toHumanNumber()
+                _imageDislikeIcon.visibility = View.VISIBLE
+                _textDislikes.visibility = View.VISIBLE
+                _textDislikes.text = _platformVideoDislikes.toHumanNumber()
+            }
+            is RatingLikes -> {
+                _layoutRating.visibility = View.VISIBLE
+                _textLikes.visibility = View.VISIBLE
+                _imageLikeIcon.visibility = View.VISIBLE
+                _textLikes.text = _platformVideoLikes.toHumanNumber()
+                _imageDislikeIcon.visibility = View.GONE
+                _textDislikes.visibility = View.GONE
+            }
+            else -> _layoutRating.visibility = View.GONE
+        }
+    }
+
+    private fun shouldUseDualVideoReactionControl(): Boolean =
+        _videoReactionSelectorEnabled &&
+            _platformVideoReactionEligible &&
+            (!_platformVideoReactionLoaded || _platformVideoReactionAvailable)
+
+    private fun isCurrentVideoReactionRequest(generation: Int, videoUrl: String): Boolean =
+        !_destroyed && generation == _videoReactionGeneration && video?.url == videoUrl
 
     private fun shouldShowResume(positionMs: Long): Boolean {
         if (_loaderGameVisible) return false
@@ -3034,7 +3366,7 @@ class VideoDetailView : ConstraintLayout {
                 _commentsList.clearComments();
             }
             else
-                _commentsList.load(true) { StatePlatform.instance.getComments(it); };
+                _commentsList.load(false) { StatePlatform.instance.getComments(it); };
         }
     }
     private fun fetchPolycentricComments() {
@@ -3283,18 +3615,25 @@ class VideoDetailView : ConstraintLayout {
         _layoutRecommended.removeAllViews()
 
         if (index == null) {
+            _addCommentView.setDestination(null)
             _addCommentView.visibility = View.GONE
             _commentsList.clear()
             _layoutRecommended.visibility = View.GONE
         } else if (index == 0) {
+            _addCommentView.setDestination(CommentDestination.POLYCENTRIC, true)
             _addCommentView.visibility = View.VISIBLE
             _layoutRecommended.visibility = View.GONE
             fetchPolycentricComments()
         } else if (index == 1) {
-            _addCommentView.visibility = View.GONE
+            _addCommentView.setDestination(CommentDestination.PLATFORM, true)
+            val canCreate = PlatformCommentUiPolicy.canCreate(video?.url?.let {
+                StatePlatform.instance.getContentClientOrNull(it)?.capabilities
+            })
+            _addCommentView.visibility = if (canCreate) View.VISIBLE else View.GONE
             _layoutRecommended.visibility = View.GONE
             fetchComments()
         } else if (index == 2) {
+            _addCommentView.setDestination(null)
             _addCommentView.visibility = View.GONE
             _layoutRecommended.visibility = View.VISIBLE
             _commentsList.clear()

@@ -55,7 +55,9 @@ class SourcePluginConfig(
     var allowAllHttpHeaderAccess: Boolean = false,
     var maxDownloadParallelism: Int = 0,
     var reduceFunctionsInLimitedVersion: Boolean = false,
-    var changelog: HashMap<String, List<String>>? = null
+    var changelog: HashMap<String, List<String>>? = null,
+    /** Optional #RRGGBB platform accent used for source-owned reactions and controls. */
+    val accentColor: String? = null
 ) : IV8PluginConfig {
 
     val absoluteIconUrl: String? get() = resolveAbsoluteUrl(iconUrl, sourceUrl);

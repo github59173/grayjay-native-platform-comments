@@ -1,81 +1,188 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="wrap_content"
-    android:layout_height="32dp"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/layout_rating_pill_root"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
     android:background="@drawable/background_pill"
-    android:gravity="center_vertical">
+    android:orientation="vertical">
 
     <LinearLayout
-        android:id="@+id/layout_like"
-        android:layout_width="wrap_content"
-        android:layout_height="match_parent"
-        android:orientation="horizontal"
-        android:paddingStart="7dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="7dp"
-        android:paddingEnd="8dp">
+        android:id="@+id/layout_polycentric_row"
+        android:layout_width="match_parent"
+        android:layout_height="32dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
-        <ImageView
-            android:id="@+id/pill_like_icon"
-            android:layout_width="30dp"
-            android:layout_height="18dp"
-            app:srcCompat="@drawable/ic_thumb_up" />
-        <TextView
-            android:id="@+id/pill_likes"
+        <LinearLayout
+            android:id="@+id/layout_like"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
-            android:textColor="@color/white"
-            android:textSize="13dp"
-            android:gravity="center_vertical"
-            tools:text="50K" />
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingStart="7dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="7dp">
 
-        <com.futo.platformplayer.views.LoaderView
-            android:id="@+id/loader_likes"
-            android:layout_width="14dp"
-            android:layout_height="14dp"
-            app:isWhite="true" />
+            <ImageView
+                android:id="@+id/pill_like_icon"
+                android:layout_width="30dp"
+                android:layout_height="18dp"
+                app:srcCompat="@drawable/ic_thumb_up" />
+
+            <TextView
+                android:id="@+id/pill_likes"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:textColor="@color/white"
+                android:textSize="13sp"
+                tools:text="50K" />
+
+            <com.futo.platformplayer.views.LoaderView
+                android:id="@+id/loader_likes"
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:visibility="gone"
+                app:isWhite="true" />
+        </LinearLayout>
+
+        <View
+            android:id="@+id/pill_seperator"
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:layout_marginTop="7dp"
+            android:layout_marginBottom="7dp"
+            android:background="#808080" />
+
+        <LinearLayout
+            android:id="@+id/layout_dislike"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingTop="6dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="7dp">
+
+            <ImageView
+                android:id="@+id/pill_dislike_icon"
+                android:layout_width="30dp"
+                android:layout_height="18dp"
+                android:layout_marginTop="2dp"
+                app:srcCompat="@drawable/ic_thumb_down" />
+
+            <TextView
+                android:id="@+id/pill_dislikes"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:textColor="@color/white"
+                android:textSize="13sp"
+                tools:text="50K" />
+
+            <com.futo.platformplayer.views.LoaderView
+                android:id="@+id/loader_dislikes"
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:visibility="gone"
+                app:isWhite="true" />
+        </LinearLayout>
     </LinearLayout>
 
     <View
-        android:id="@+id/pill_seperator"
-        android:layout_width="1dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="7dp"
-        android:layout_marginBottom="7dp"
-
-        android:background="#808080"/>
-
+        android:id="@+id/pill_platform_row_separator"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#57575C"
+        android:visibility="gone" />
 
     <LinearLayout
-        android:id="@+id/layout_dislike"
-        android:layout_width="wrap_content"
-        android:layout_height="match_parent"
+        android:id="@+id/layout_platform_row"
+        android:layout_width="match_parent"
+        android:layout_height="32dp"
+        android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingEnd="12dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="7dp">
+        android:visibility="gone">
 
-        <ImageView
-            android:id="@+id/pill_dislike_icon"
-            android:layout_width="30dp"
-            android:layout_height="18dp"
-            android:layout_marginTop="2dp"
-            app:srcCompat="@drawable/ic_thumb_down" />
-        <TextView
-            android:id="@+id/pill_dislikes"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:id="@+id/layout_platform_like"
+            android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:textColor="@color/white"
-            android:gravity="center_vertical"
-            android:textSize="13dp"
-            tools:text="50K" />
-        <com.futo.platformplayer.views.LoaderView
-            android:id="@+id/loader_dislikes"
-            android:layout_width="14dp"
-            android:layout_height="14dp"
-            app:isWhite="true" />
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingStart="3dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="3dp"
+            android:paddingBottom="7dp">
+
+            <ImageView
+                android:id="@+id/pill_platform_like_icon"
+                android:layout_width="26dp"
+                android:layout_height="18dp"
+                app:srcCompat="@drawable/ic_thumb_up" />
+
+            <TextView
+                android:id="@+id/pill_platform_likes"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:textColor="@color/white"
+                android:textSize="13sp"
+                tools:text="281K" />
+
+            <com.futo.platformplayer.views.LoaderView
+                android:id="@+id/loader_platform_likes"
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:visibility="gone"
+                app:isWhite="true" />
+        </LinearLayout>
+
+        <View
+            android:id="@+id/pill_platform_seperator"
+            android:layout_width="3dp"
+            android:layout_height="25dp"
+            android:background="@color/youtube_red" />
+
+        <LinearLayout
+            android:id="@+id/layout_platform_dislike"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingStart="3dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="3dp"
+            android:paddingBottom="7dp">
+
+            <ImageView
+                android:id="@+id/pill_platform_dislike_icon"
+                android:layout_width="26dp"
+                android:layout_height="18dp"
+                android:layout_marginTop="2dp"
+                app:srcCompat="@drawable/ic_thumb_down" />
+
+            <TextView
+                android:id="@+id/pill_platform_dislikes"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:textColor="@color/white"
+                android:textSize="13sp"
+                tools:text="18K" />
+
+            <com.futo.platformplayer.views.LoaderView
+                android:id="@+id/loader_platform_dislikes"
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:visibility="gone"
+                app:isWhite="true" />
+        </LinearLayout>
     </LinearLayout>
 
 </LinearLayout>

@@ -83,6 +83,8 @@ Create a configuration file for your plugin.
 	"version": 1,
 	
 	"iconUrl": "./someimage.png",
+	// Optional source color used for selected native reactions and other platform-owned controls. Invalid or missing values fall back to the app accent.
+	"accentColor": "#FF0000",
 
     // The `id` field should be a uniquely generated UUID like from [https://www.uuidgenerator.net/](https://www.uuidgenerator.net/). This will be used to distinguish your plugin from others.
 	"id": "309b2e83-7ede-4af8-8ee9-822bc4647a24",

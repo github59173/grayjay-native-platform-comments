@@ -199,8 +199,13 @@ fun V8ObjectToHashMap(obj: V8ValueObject?): HashMap<String, String> {
         return hashMapOf();
     obj.ensureIsBusy();
     val map = hashMapOf<String, String>();
-    for(prop in obj.ownPropertyNames.keys.map { obj.ownPropertyNames.get<V8Value>(it).toString() })
-        map.put(prop, obj.getString(prop));
+    for(prop in obj.ownPropertyNames.keys.map { obj.ownPropertyNames.get<V8Value>(it).toString() }) {
+        // Javet exposes getString() as a Java platform type. A JavaScript null
+        // can therefore bypass Kotlin's non-null generic and poison the map.
+        val value = obj.getString(prop)
+        if (value != null)
+            map[prop] = value
+    }
     return map;
 }
 

@@ -720,4 +720,8 @@
         <item>イタリア語 (IT)</item>
         <item>トルコ語 (TR)</item>
     </string-array>
+    <string name="add_a_destination_comment">%1$s にコメントを追加…</string>
+    <string name="comments_are_locked">コメントはロックされています</string>
+    <string name="destination_comments_are_locked">%1$s のコメントはロックされています</string>
+    <string name="replies_are_locked">返信はロックされています</string>
 </resources>

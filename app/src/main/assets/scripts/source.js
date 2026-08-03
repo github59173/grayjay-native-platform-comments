@@ -679,6 +679,12 @@ class PlatformComment {
         this.rating = obj.rating ?? new RatingLikes(0);
         this.date = obj.date ?? 0;
         this.replyCount = obj.replyCount ?? 0;
+        this.id = obj.id ?? null;
+        this.isOwnedByUser = obj.isOwnedByUser ?? false;
+        this.isEdited = obj.isEdited ?? false;
+        this.userReaction = obj.userReaction ?? "NONE";
+        this.capabilities = obj.capabilities ?? [];
+        this.visibility = obj.visibility ?? "UNKNOWN";
         this.context = obj.context ?? {};
         if(obj.getReplies)
             this.getReplies = obj.getReplies;

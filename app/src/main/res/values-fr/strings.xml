@@ -728,4 +728,8 @@
         <item>Italien (IT)</item>
         <item>Turc (TR)</item>
     </string-array>
+    <string name="add_a_destination_comment">Ajouter un commentaire %1$s…</string>
+    <string name="comments_are_locked">Les commentaires sont verrouillés</string>
+    <string name="destination_comments_are_locked">Les commentaires %1$s sont verrouillés</string>
+    <string name="replies_are_locked">Les réponses sont verrouillées</string>
 </resources>

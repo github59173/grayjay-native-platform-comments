@@ -252,7 +252,7 @@ class CommentsFragment : MainFragment() {
                         _adapterComments.notifyItemInserted(_adapterComments.childToParentPosition(newCommentIndex))
                     });
             } else {
-                _repliesOverlay.load(true, metadata, null, null, c, { StatePlatform.instance.getSubComments(c) });
+                _repliesOverlay.load(true, metadata, c.contextUrl, null, c, { StatePlatform.instance.getSubComments(c) });
             }
 
             setRepliesOverlayVisible(isVisible = true, animate = true);

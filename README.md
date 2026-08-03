@@ -1,5 +1,15 @@
 # PlatformPlayer
 
+> [!IMPORTANT]
+> This is an **unofficial reference implementation** based on Grayjay Android
+> upstream commit `993a9bd850f022f952460b1dfc0744b98e0c23b4`. It demonstrates native
+> platform comments and platform video reactions end to end. It is not an
+> official FUTO build and is not endorsed or supported by FUTO.
+>
+> Start with [Native platform comments and reactions](NATIVE_PLATFORM_COMMENTS.md)
+> for the feature map, companion plugin, build instructions, verification
+> evidence, and an upstream-review plan.
+
 The FUTO media app endeavours creating infrastructure for creators to have their content hosted by someone else but at the same time having creators retain full ownership of their content. We want creators to feel like they are publishing to the world, and we want multiple indexers competing with each other to do a good job connecting consumers to creators and their content.
 
 One part of the solution is to create an application that allows users to search through all available media websites and giving creators the tools for direct monetization of their content by allowing users to directly donate to the content creator.

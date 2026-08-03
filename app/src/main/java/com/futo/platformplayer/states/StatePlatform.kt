@@ -16,6 +16,8 @@ import com.futo.platformplayer.api.media.models.ResultCapabilities
 import com.futo.platformplayer.api.media.models.channels.IPlatformChannel
 import com.futo.platformplayer.api.media.models.chapters.IChapter
 import com.futo.platformplayer.api.media.models.comments.IPlatformComment
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentMutationError
+import com.futo.platformplayer.api.media.models.comments.PlatformCommentMutationResult
 import com.futo.platformplayer.api.media.models.contents.IPlatformContent
 import com.futo.platformplayer.api.media.models.contents.IPlatformContentDetails
 import com.futo.platformplayer.api.media.models.contents.PlatformContentPlaceholder
@@ -25,6 +27,9 @@ import com.futo.platformplayer.api.media.models.playback.IPlaybackTracker
 import com.futo.platformplayer.api.media.models.playlists.IPlatformPlaylist
 import com.futo.platformplayer.api.media.models.playlists.IPlatformPlaylistDetails
 import com.futo.platformplayer.api.media.models.video.IPlatformVideo
+import com.futo.platformplayer.api.media.models.video.PlatformVideoReaction
+import com.futo.platformplayer.api.media.models.video.PlatformVideoReactionResult
+import com.futo.platformplayer.api.media.models.video.PlatformVideoReactionState
 import com.futo.platformplayer.api.media.platforms.js.DevJSClient
 import com.futo.platformplayer.api.media.platforms.js.JSClient
 import com.futo.platformplayer.api.media.platforms.js.SourcePluginConfig
@@ -97,6 +102,7 @@ class StatePlatform {
     private val _pagerClientPool = PlatformMultiClientPool("Pagers", 2); //Used primarily for calls that result in front-end pagers, preventing them from blocking other calls.
     private val _channelClientPool = PlatformMultiClientPool("Channels", 15); //Used primarily for subscription/background channel fetches
     private val _trackerClientPool = PlatformMultiClientPool("Trackers", 1); //Used exclusively for playback trackers
+    private val _videoReactionClientPool = PlatformMultiClientPool("VideoReactions", 1); //Keeps native reaction state and its follow-up mutation on one plugin runtime.
     private val _liveEventClientPool = PlatformMultiClientPool("LiveEvents", 1); //Used exclusively for live events
     private val _privateClientPool = PlatformMultiClientPool("Private", 2, true); //Used primarily for calls if in incognito mode
     private val _instantClientPool = PlatformMultiClientPool("Instant", 1, false, true); //Used for all instant calls
@@ -838,6 +844,29 @@ class StatePlatform {
         return client.getContentRecommendations(url);
     }
 
+    fun getVideoReactionState(url: String): PlatformVideoReactionState {
+        if (StateApp.instance.privateMode)
+            return PlatformVideoReactionState.unsupported()
+        val baseClient = getContentClientOrNull(url) ?: return PlatformVideoReactionState.unsupported()
+        val client = if (baseClient is JSClient)
+            _videoReactionClientPool.getClientPooled(baseClient, 1)
+        else baseClient
+        return client.getVideoReactionState(url)
+    }
+
+    fun setVideoReaction(
+        url: String,
+        reaction: PlatformVideoReaction
+    ): PlatformVideoReactionResult {
+        if (StateApp.instance.privateMode)
+            return PlatformVideoReactionResult.unsupported()
+        val baseClient = getContentClientOrNull(url) ?: return PlatformVideoReactionResult.unsupported()
+        val client = if (baseClient is JSClient)
+            _videoReactionClientPool.getClientPooled(baseClient, 1)
+        else baseClient
+        return client.setVideoReaction(url, reaction)
+    }
+
     fun hasEnabledChannelClient(url : String) : Boolean = getEnabledClients().any { _instantClientPool.getClientPooled(it).isChannelUrl(url) };
     fun getChannelClient(url : String, exclude: List<String>? = null) : IPlatformClient = getChannelClientOrNull(url, exclude)
         ?: throw NoPlatformClientException("No client enabled that supports this channel url (${url})");
@@ -1071,6 +1100,46 @@ class StatePlatform {
         Logger.i(TAG, "Platform - getSubComments");
         val client = getContentClient(comment.contextUrl);
         return client.getSubComments(comment);
+    }
+
+    fun createComment(contentUrl: String, message: String): PlatformCommentMutationResult =
+        runCommentMutation(contentUrl) { it.createComment(contentUrl, message) };
+
+    fun replyToComment(comment: IPlatformComment, message: String): PlatformCommentMutationResult =
+        runCommentMutation(comment.contextUrl) { it.replyToComment(comment, message) };
+
+    fun editComment(comment: IPlatformComment, message: String): PlatformCommentMutationResult =
+        runCommentMutation(comment.contextUrl) { it.editComment(comment, message) };
+
+    fun deleteComment(comment: IPlatformComment): PlatformCommentMutationResult =
+        runCommentMutation(comment.contextUrl) { it.deleteComment(comment) };
+
+    fun likeComment(comment: IPlatformComment, enabled: Boolean): PlatformCommentMutationResult =
+        runCommentMutation(comment.contextUrl) { it.likeComment(comment, enabled) };
+
+    fun dislikeComment(comment: IPlatformComment, enabled: Boolean): PlatformCommentMutationResult =
+        runCommentMutation(comment.contextUrl) { it.dislikeComment(comment, enabled) };
+
+    fun getCommentingIdentity(contentUrl: String): String? =
+        getContentClientOrNull(contentUrl)?.getCommentingIdentity();
+
+    private fun runCommentMutation(
+        contentUrl: String,
+        action: (IPlatformClient) -> PlatformCommentMutationResult
+    ): PlatformCommentMutationResult {
+        if (StateApp.instance.privateMode)
+            return PlatformCommentMutationResult(
+                success = false,
+                message = StateApp.instance.context.getString(R.string.comment_mutations_disabled_private_mode),
+                error = PlatformCommentMutationError.ACTION_NOT_SUPPORTED
+            );
+        val client = getContentClientOrNull(contentUrl)
+            ?: return PlatformCommentMutationResult(
+                success = false,
+                message = StateApp.instance.context.getString(R.string.no_source_for_comment_mutation),
+                error = PlatformCommentMutationError.ACTION_NOT_SUPPORTED
+            );
+        return action(client);
     }
 
     fun getLiveEvents(url: String): IPager<IPlatformLiveEvent>? {

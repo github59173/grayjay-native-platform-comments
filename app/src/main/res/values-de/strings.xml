@@ -1038,4 +1038,8 @@
         <item>Chinesisch</item>
         <item>Italienisch</item>
     </string-array>
+    <string name="add_a_destination_comment">Einen %1$s-Kommentar hinzufügen…</string>
+    <string name="comments_are_locked">Kommentare sind gesperrt</string>
+    <string name="destination_comments_are_locked">%1$s-Kommentare sind gesperrt</string>
+    <string name="replies_are_locked">Antworten sind gesperrt</string>
 </resources>
