@@ -16,11 +16,12 @@ unsigned third-party plugin FUTO's official-plugin trust.
 
 ## Download
 
-1. Open the repository's **Actions** tab.
-2. Open the newest successful **Native platform comments** run on `main`.
-3. Download the `grayjay-native-comments-development-<run number>` artifact.
-4. Extract it and use `grayjay-native-comments-unstable-debug.apk`.
-5. Optionally verify the adjacent SHA-256 file before installation:
+1. Open the repository's **Releases** page.
+2. Open the newest `Grayjay native comments development` prerelease.
+3. Download `grayjay-native-comments-unstable-debug.apk` and its adjacent
+   `.sha256` file. The same files remain available as an Actions artifact for
+   30 days.
+4. Optionally verify the APK before installation:
 
    ```sh
    shasum -a 256 -c grayjay-native-comments-unstable-debug.apk.sha256

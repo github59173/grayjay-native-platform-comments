@@ -94,3 +94,54 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
+
+  publish-development-release:
+    needs: verify
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download verified APK artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: grayjay-native-comments-development-${{ github.run_number }}
+          path: dist
+
+      - name: Publish GitHub prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="native-comments-dev-${GITHUB_RUN_NUMBER}"
+          version="0.2.0-dev.${GITHUB_RUN_NUMBER}+${GITHUB_SHA:0:7}"
+          notes="Unofficial development APK for testing native platform comments and reactions. This is the unstableDebug variant; it installs as com.futo.platformplayer.d and enables the optional Browser package through Grayjay's existing BuildConfig.DEBUG gate. See build-info.txt and the SHA-256 attachment for provenance and verification."
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" \
+              dist/grayjay-native-comments-unstable-debug.apk \
+              dist/grayjay-native-comments-unstable-debug.apk.sha256 \
+              dist/build-info.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            gh release edit "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Grayjay native comments development ${version}" \
+              --prerelease \
+              --notes "$notes"
+          else
+            gh release create "$tag" \
+              dist/grayjay-native-comments-unstable-debug.apk \
+              dist/grayjay-native-comments-unstable-debug.apk.sha256 \
+              dist/build-info.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Grayjay native comments development ${version}" \
+              --prerelease \
+              --notes "$notes"
+          fi
