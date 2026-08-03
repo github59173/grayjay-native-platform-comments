@@ -87,7 +87,9 @@ import com.futo.platformplayer.api.media.models.video.IPlatformVideo
 import com.futo.platformplayer.api.media.models.video.IPlatformVideoDetails
 import com.futo.platformplayer.api.media.models.video.LocalVideoDetails
 import com.futo.platformplayer.api.media.models.video.PlatformVideoReaction
+import com.futo.platformplayer.api.media.models.video.PlatformVideoReactionError
 import com.futo.platformplayer.api.media.models.video.PlatformVideoReactionResult
+import com.futo.platformplayer.api.media.models.video.PlatformVideoReactionRetryPolicy
 import com.futo.platformplayer.api.media.models.video.SerializedPlatformVideo
 import com.futo.platformplayer.api.media.platforms.js.JSClient
 import com.futo.platformplayer.api.media.platforms.js.SourcePluginConfig
@@ -316,6 +318,7 @@ class VideoDetailView : ConstraintLayout {
     private var _videoReactionGeneration = 0
     private var _videoReactionSelectorEnabled = false
     private var _videoReactionMutationInProgress = false
+    private var _platformVideoReactionMutationJob: Job? = null
     private var _polycentricVideoReactionLoaded = false
     private var _platformVideoReactionLoaded = false
     private var _platformVideoReactionEligible = false
@@ -327,6 +330,8 @@ class VideoDetailView : ConstraintLayout {
     private var _polycentricVideoRating = RatingLikeDislikes(0, 0)
     private var _polycentricVideoReaction = PlatformVideoReaction.NONE
     private var _platformVideoReaction = PlatformVideoReaction.NONE
+    private var _platformVideoReactionConfirmed = PlatformVideoReaction.NONE
+    private var _platformVideoReactionDesired = PlatformVideoReaction.NONE
     private var _platformVideoLikes = 0L
     private var _platformVideoDislikes = 0L
     private var _platformVideoHasDislikeCount = false
@@ -1333,6 +1338,8 @@ class VideoDetailView : ConstraintLayout {
         Logger.i(TAG, "onDestroy");
         _destroyed = true;
         _videoReactionGeneration++
+        _platformVideoReactionMutationJob?.cancel()
+        _platformVideoReactionMutationJob = null
         _rating.onLikeDislikeUpdated.remove(this)
         _rating.setPlatformMutationHandler()
         _artworkTarget?.let { Glide.with(context).clear(it) }
@@ -1878,6 +1885,8 @@ class VideoDetailView : ConstraintLayout {
         _rating.visibility = View.GONE
 
         _videoReactionMutationInProgress = false
+        _platformVideoReactionMutationJob?.cancel()
+        _platformVideoReactionMutationJob = null
         _videoReactionSelectorEnabled = StatePolycentric.instance.enabled && video !is LocalVideoDetails
         _polycentricVideoReactionLoaded = !_videoReactionSelectorEnabled
         _platformVideoReactionLoaded = false
@@ -1888,6 +1897,8 @@ class VideoDetailView : ConstraintLayout {
         _polycentricVideoRating = RatingLikeDislikes(0, 0)
         _polycentricVideoReaction = PlatformVideoReaction.NONE
         _platformVideoReaction = PlatformVideoReaction.NONE
+        _platformVideoReactionConfirmed = PlatformVideoReaction.NONE
+        _platformVideoReactionDesired = PlatformVideoReaction.NONE
 
         if (!_videoReactionSelectorEnabled) return
 
@@ -1965,6 +1976,8 @@ class VideoDetailView : ConstraintLayout {
                     _platformVideoCanLike = state?.canLike == true
                     _platformVideoCanDislike = state?.canDislike == true
                     _platformVideoReaction = state?.reaction ?: PlatformVideoReaction.NONE
+                    _platformVideoReactionConfirmed = _platformVideoReaction
+                    _platformVideoReactionDesired = _platformVideoReaction
                     renderVideoReactionSelector(generation, videoUrl, ref)
                 }
             }
@@ -2038,20 +2051,15 @@ class VideoDetailView : ConstraintLayout {
         network: VideoReactionNetwork,
         reaction: PlatformVideoReaction
     ) {
-        if (_videoReactionMutationInProgress || !isCurrentVideoReactionRequest(generation, videoUrl)) return
+        if (!isCurrentVideoReactionRequest(generation, videoUrl)) return
         when (network) {
-            VideoReactionNetwork.POLYCENTRIC -> requestPolycentricVideoReaction(
-                generation,
-                videoUrl,
-                ref,
-                reaction
-            )
-            VideoReactionNetwork.PLATFORM -> requestPlatformVideoReaction(
-                generation,
-                videoUrl,
-                ref,
-                reaction
-            )
+            VideoReactionNetwork.POLYCENTRIC -> {
+                if (_videoReactionMutationInProgress) return
+                requestPolycentricVideoReaction(generation, videoUrl, ref, reaction)
+            }
+            VideoReactionNetwork.PLATFORM -> {
+                requestPlatformVideoReaction(generation, videoUrl, ref, reaction)
+            }
         }
     }
 
@@ -2102,8 +2110,8 @@ class VideoDetailView : ConstraintLayout {
         ref: Protocol.Reference,
         desired: PlatformVideoReaction
     ) {
-        val previous = _platformVideoReaction
-        if (desired == previous) return
+        val previousDisplayed = _platformVideoReaction
+        if (desired == previousDisplayed) return
         if (desired == PlatformVideoReaction.LIKE && !_platformVideoCanLike) {
             UIDialogs.toast(context, context.getString(R.string.platform_video_like_unavailable))
             return
@@ -2116,31 +2124,124 @@ class VideoDetailView : ConstraintLayout {
             return
         }
 
-        _videoReactionMutationInProgress = true
+        // Match comment reactions: reflect the tap immediately and perform the
+        // source mutation in the background. The confirmed state is kept so a
+        // final failure can restore both the selection and its counter exactly.
+        adjustPlatformVideoRating(previousDisplayed, desired)
+        _platformVideoReaction = desired
+        _platformVideoReactionDesired = desired
         renderVideoReactionSelector(generation, videoUrl, ref)
-        fragment.lifecycleScope.launch(Dispatchers.IO) {
-            val result = try {
-                StatePlatform.instance.setVideoReaction(videoUrl, desired)
-            } catch (e: Throwable) {
-                Logger.e(TAG, "Platform video reaction failed.", e)
-                PlatformVideoReactionResult(success = false, message = e.message)
-            }
-            withContext(Dispatchers.Main) {
-                if (!isCurrentVideoReactionRequest(generation, videoUrl)) return@withContext
-                if (result.success) {
-                    adjustPlatformVideoRating(previous, result.reaction)
-                    _platformVideoReaction = result.reaction
-                } else {
-                    UIDialogs.toast(
-                        context,
-                        result.message ?: context.getString(R.string.failed_to_update_video_reaction)
-                    )
+        ensurePlatformVideoReactionMutation(generation, videoUrl, ref)
+    }
+
+    /**
+     * Serializes rapid taps just like comment reactions: the current request finishes,
+     * then only the newest desired state is sent. The UI remains optimistic throughout.
+     */
+    private fun ensurePlatformVideoReactionMutation(
+        generation: Int,
+        videoUrl: String,
+        ref: Protocol.Reference
+    ) {
+        if (_platformVideoReactionMutationJob?.isActive == true) return
+        _platformVideoReactionMutationJob = fragment.lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                while (true) {
+                    val target = withContext(Dispatchers.Main) {
+                        if (!isCurrentVideoReactionRequest(generation, videoUrl))
+                            return@withContext null
+                        _platformVideoReactionDesired
+                    } ?: break
+                    val confirmed = withContext(Dispatchers.Main) {
+                        _platformVideoReactionConfirmed
+                    }
+                    if (target == confirmed) break
+
+                    val result = setPlatformVideoReactionWithRetry(videoUrl, target)
+                    val hasMoreWork = withContext(Dispatchers.Main) {
+                        if (!isCurrentVideoReactionRequest(generation, videoUrl))
+                            return@withContext false
+
+                        if (result.success) {
+                            _platformVideoReactionConfirmed = result.reaction
+                            if (_platformVideoReactionDesired == target) {
+                                adjustPlatformVideoRating(_platformVideoReaction, result.reaction)
+                                _platformVideoReaction = result.reaction
+                                _platformVideoReactionDesired = result.reaction
+                            }
+                        } else if (_platformVideoReactionDesired == target) {
+                            adjustPlatformVideoRating(
+                                _platformVideoReaction,
+                                _platformVideoReactionConfirmed
+                            )
+                            _platformVideoReaction = _platformVideoReactionConfirmed
+                            _platformVideoReactionDesired = _platformVideoReactionConfirmed
+                            UIDialogs.toast(
+                                context,
+                                result.message
+                                    ?: context.getString(R.string.failed_to_update_video_reaction)
+                            )
+                        }
+
+                        renderPlatformVideoRating()
+                        renderVideoReactionSelector(generation, videoUrl, ref)
+                        _platformVideoReactionDesired != _platformVideoReactionConfirmed
+                    }
+                    if (!hasMoreWork) break
                 }
-                _videoReactionMutationInProgress = false
-                renderPlatformVideoRating()
-                renderVideoReactionSelector(generation, videoUrl, ref)
+            } finally {
+                withContext(Dispatchers.Main) {
+                    _platformVideoReactionMutationJob = null
+                    if (
+                        isCurrentVideoReactionRequest(generation, videoUrl) &&
+                        _platformVideoReactionDesired != _platformVideoReactionConfirmed
+                    ) {
+                        ensurePlatformVideoReactionMutation(generation, videoUrl, ref)
+                    }
+                }
             }
         }
+    }
+
+    private suspend fun setPlatformVideoReactionWithRetry(
+        videoUrl: String,
+        desired: PlatformVideoReaction
+    ): PlatformVideoReactionResult {
+        var completedAttempts = 0
+        var result = PlatformVideoReactionResult(
+            success = false,
+            retryable = true,
+            error = PlatformVideoReactionError.NETWORK_ERROR
+        )
+
+        while (completedAttempts < PlatformVideoReactionRetryPolicy.MAX_ATTEMPTS) {
+            completedAttempts++
+            result = try {
+                StatePlatform.instance.setVideoReaction(videoUrl, desired)
+            } catch (e: Throwable) {
+                Logger.e(
+                    TAG,
+                    "Platform video reaction attempt $completedAttempts failed.",
+                    e
+                )
+                PlatformVideoReactionResult(
+                    success = false,
+                    retryable = true,
+                    message = e.message,
+                    error = PlatformVideoReactionError.NETWORK_ERROR
+                )
+            }
+
+            if (!PlatformVideoReactionRetryPolicy.shouldRetry(result, completedAttempts)) break
+            Logger.w(
+                TAG,
+                "Retrying platform video reaction after attempt $completedAttempts " +
+                    "(${result.error ?: "untyped source rejection"})."
+            )
+            delay(PlatformVideoReactionRetryPolicy.delayAfter(completedAttempts))
+        }
+
+        return result
     }
 
     private fun applyPolycentricVideoReaction(

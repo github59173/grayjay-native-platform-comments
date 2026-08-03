@@ -355,7 +355,7 @@ class PillRatingLikesDislikes : LinearLayout {
         alpha = 1f
         (layoutParams as? ViewGroup.MarginLayoutParams)?.let { params ->
             if (enabled && _normalTopMargin == null) _normalTopMargin = params.topMargin
-            params.width = if (enabled) dp(120) else ViewGroup.LayoutParams.WRAP_CONTENT
+            params.width = if (enabled) dualVideoReactionWidth() else ViewGroup.LayoutParams.WRAP_CONTENT
             params.topMargin = if (enabled) 0 else (_normalTopMargin ?: params.topMargin)
             layoutParams = params
         }
@@ -363,7 +363,7 @@ class PillRatingLikesDislikes : LinearLayout {
             _pillRoot.setBackgroundResource(R.drawable.background_video_action)
             val dividerWidth = dp(3)
             val dividerHeight = dp(25)
-            minimumWidth = dp(120)
+            minimumWidth = dualVideoReactionWidth()
             _layoutLike.layoutParams = LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
             _layoutDislike.layoutParams = LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
             _layoutLike.setPadding(dp(3), dp(6), dp(3), dp(7))
@@ -521,4 +521,7 @@ class PillRatingLikesDislikes : LinearLayout {
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun dualVideoReactionWidth(): Int =
+        resources.getDimensionPixelSize(R.dimen.dual_video_reaction_width)
 }

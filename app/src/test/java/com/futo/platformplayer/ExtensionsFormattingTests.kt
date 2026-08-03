@@ -12,6 +12,7 @@ class ExtensionsFormattingTests {
     @Test
     fun testToHumanNumber() {
         assertEquals("1K", 1000L.toHumanNumber())
+        assertEquals("1.34K", 1340L.toHumanNumber())
         assertEquals("1M", 1000000L.toHumanNumber())
         assertEquals("1.5M", 1500000L.toHumanNumber())
         assertEquals("3B", 3000000000L.toHumanNumber())

@@ -44,3 +44,33 @@ data class PlatformVideoReactionResult(
         )
     }
 }
+
+/**
+ * Keeps transient native-platform reaction failures off the UI thread while avoiding
+ * repeated requests for failures that require user action or source support.
+ */
+object PlatformVideoReactionRetryPolicy {
+    const val MAX_ATTEMPTS = 3
+    private val RETRY_DELAYS_MS = longArrayOf(250L, 750L)
+
+    /** [completedAttempts] is one-based and includes the result supplied here. */
+    fun shouldRetry(result: PlatformVideoReactionResult, completedAttempts: Int): Boolean {
+        if (result.success || completedAttempts >= MAX_ATTEMPTS) return false
+        if (
+            result.error == PlatformVideoReactionError.AUTH_REQUIRED ||
+            result.error == PlatformVideoReactionError.ACTION_NOT_SUPPORTED
+        ) return false
+
+        return result.retryable || result.error == null || result.error in setOf(
+            PlatformVideoReactionError.NETWORK_ERROR,
+            PlatformVideoReactionError.RATE_LIMITED,
+            PlatformVideoReactionError.UPSTREAM_RESPONSE_CHANGED,
+            PlatformVideoReactionError.UNKNOWN
+        )
+    }
+
+    fun delayAfter(completedAttempts: Int): Long =
+        RETRY_DELAYS_MS.getOrElse((completedAttempts - 1).coerceAtLeast(0)) {
+            RETRY_DELAYS_MS.last()
+        }
+}

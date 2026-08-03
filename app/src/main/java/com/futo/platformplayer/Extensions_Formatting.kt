@@ -13,6 +13,7 @@ import java.lang.IllegalStateException
 import java.text.DecimalFormat
 import java.time.OffsetDateTime
 import java.time.temporal.ChronoUnit
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToLong
 
@@ -27,9 +28,9 @@ fun Long.toHumanNumber(): String {
     if(v >= countInBillion)
         return "${Math.floor((this / countInBillion).toDouble()).toLong()}B"
     if(v >= countInMillion)
-        return "${"%.2f".format((this.toDouble() / countInMillion)).trim('0').trim('.')}M"
+        return "${String.format(Locale.ROOT, "%.2f", this.toDouble() / countInMillion).trim('0').trim('.')}M"
     if(v >= countInKilo)
-        return "${"%.2f".format((this.toDouble() / countInKilo)).trim('0').trim('.')}K"
+        return "${String.format(Locale.ROOT, "%.2f", this.toDouble() / countInKilo).trim('0').trim('.')}K"
 
     return "${this}";
 }
