@@ -10,6 +10,9 @@
 > for the feature map, companion plugin, build instructions, verification
 > evidence, and an upstream-review plan.
 
+For the installable GitHub Actions development APK and Android Studio emulator
+instructions, see [Testing the GitHub Actions APK](docs/native-platform-comments/TESTING_APK.md).
+
 The FUTO media app endeavours creating infrastructure for creators to have their content hosted by someone else but at the same time having creators retain full ownership of their content. We want creators to feel like they are publishing to the world, and we want multiple indexers competing with each other to do a good job connecting consumers to creators and their content.
 
 One part of the solution is to create an application that allows users to search through all available media websites and giving creators the tools for direct monetization of their content by allowing users to directly donate to the content creator.

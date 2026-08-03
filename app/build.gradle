@@ -8,9 +8,19 @@ plugins {
     id 'com.google.devtools.ksp'
 }
 
+def describedVersion = grgit.describe()
+def ciVersionName = System.getenv('GRAYJAY_VERSION_NAME')
+def ciVersionCode = System.getenv('GRAYJAY_VERSION_CODE')
+
+if (ciVersionCode != null && !ciVersionCode.isInteger()) {
+    throw new GradleException('GRAYJAY_VERSION_CODE must be an integer')
+}
+
 ext {
-    gitVersionName = grgit.describe()
-    gitVersionCode = gitVersionName != null && gitVersionName.isInteger() ? gitVersionName.toInteger() : 1
+    gitVersionName = ciVersionName ?: describedVersion
+    gitVersionCode = ciVersionCode != null
+        ? ciVersionCode.toInteger()
+        : (describedVersion != null && describedVersion.isInteger() ? describedVersion.toInteger() : 1)
 }
 
 println("Version Name: $gitVersionName")

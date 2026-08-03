@@ -37,8 +37,60 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
+      - name: Set CI application version
+        shell: bash
+        run: |
+          echo "GRAYJAY_VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "GRAYJAY_VERSION_NAME=0.2.0-dev.${GITHUB_RUN_NUMBER}+${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
+
+      - name: Restore persistent development signing key
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GRAYJAY_DEBUG_KEYSTORE_BASE64: ${{ secrets.GRAYJAY_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [[ -z "$GRAYJAY_DEBUG_KEYSTORE_BASE64" ]]; then
+            echo "::warning::GRAYJAY_DEBUG_KEYSTORE_BASE64 is not configured; this run will use an ephemeral debug certificate"
+            exit 0
+          fi
+
+          mkdir -p "$HOME/.android"
+          printf '%s' "$GRAYJAY_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+
       - name: Verify native-platform implementation
         run: ./scripts/verify-native-platform-comments.sh
 
       - name: Assemble debug variants
         run: ./gradlew :app:assembleStableDebug :app:assembleUnstableDebug
+
+      - name: Prepare installable development APK
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/unstable/debug/app-unstable-universal-debug.apk \
+            dist/grayjay-native-comments-unstable-debug.apk
+          cd dist
+          sha256sum grayjay-native-comments-unstable-debug.apk \
+            > grayjay-native-comments-unstable-debug.apk.sha256
+          {
+            echo "repository=$GITHUB_REPOSITORY"
+            echo "commit=$GITHUB_SHA"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "version_name=$GRAYJAY_VERSION_NAME"
+            echo "version_code=$GRAYJAY_VERSION_CODE"
+            echo "application_id=com.futo.platformplayer.d"
+            echo "build_type=debug"
+            echo "browser_package=enabled_by_BuildConfig.DEBUG"
+          } > build-info.txt
+
+      - name: Upload development APK
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: grayjay-native-comments-development-${{ github.run_number }}
+          path: dist/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
