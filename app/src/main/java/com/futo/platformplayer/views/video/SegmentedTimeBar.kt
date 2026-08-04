@@ -10,6 +10,7 @@ import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.DefaultTimeBar
+import com.futo.platformplayer.R
 import com.futo.platformplayer.api.media.models.chapters.IChapter
 import com.futo.platformplayer.api.media.models.chapters.TimelineSegment
 import com.futo.platformplayer.api.media.models.chapters.TimelineSegments
@@ -22,6 +23,7 @@ class SegmentedTimeBar @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : DefaultTimeBar(context, attrs, defStyleAttr) {
     private val segmentPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val segmentOverlayEnabled: Boolean
     private val barHeight: Int
     private val barGravity: Int
     private val scrubberPadding: Int
@@ -34,6 +36,21 @@ class SegmentedTimeBar @JvmOverloads constructor(
     private var segments: List<TimelineSegment> = emptyList()
 
     init {
+        val segmentStyle = context.theme.obtainStyledAttributes(
+            attrs,
+            R.styleable.SegmentedTimeBar,
+            defStyleAttr,
+            0
+        )
+        try {
+            segmentOverlayEnabled = segmentStyle.getBoolean(
+                R.styleable.SegmentedTimeBar_segmentOverlayEnabled,
+                true
+            )
+        } finally {
+            segmentStyle.recycle()
+        }
+
         val density = resources.displayMetrics.density
         val defaultBarHeight = dpToPx(density, DEFAULT_BAR_HEIGHT_DP)
         val defaultScrubberEnabledSize = dpToPx(density, DEFAULT_SCRUBBER_ENABLED_SIZE_DP)
@@ -80,6 +97,8 @@ class SegmentedTimeBar @JvmOverloads constructor(
     }
 
     fun getSegments(): List<TimelineSegment> = segments.toList()
+
+    fun isSegmentOverlayEnabled(): Boolean = segmentOverlayEnabled
 
     override fun setDuration(duration: Long) {
         durationMs = duration
@@ -134,7 +153,7 @@ class SegmentedTimeBar @JvmOverloads constructor(
     }
 
     private fun drawSegments(canvas: Canvas) {
-        if(segments.isEmpty() || durationMs <= 0L || durationMs == C.TIME_UNSET) return
+        if(!segmentOverlayEnabled || segments.isEmpty() || durationMs <= 0L || durationMs == C.TIME_UNSET) return
 
         val activeScrubberPadding = if(scrubberPaddingDisabled) 0 else scrubberPadding
         val barLeft = paddingLeft + activeScrubberPadding

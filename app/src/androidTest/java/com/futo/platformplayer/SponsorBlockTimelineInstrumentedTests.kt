@@ -44,6 +44,13 @@ class SponsorBlockTimelineInstrumentedTests {
             assertTrue("Layout $layout should use SegmentedTimeBar", root.findViewById<View>(id) is SegmentedTimeBar)
         }
 
+        val portrait = inflater.inflate(R.layout.video_player_ui, null, false)
+        val portraitTimeBar = portrait.findViewById<SegmentedTimeBar>(R.id.time_progress)
+        assertTrue(
+            "The transparent portrait scrubber must not duplicate the persistent timeline segments",
+            !portraitTimeBar.isSegmentOverlayEnabled()
+        )
+
         // The cast layout's existing GestureControlView requires a live activity/window and cannot be
         // inflated in isolation. Inspect its compiled XML declaration instead of bypassing that contract.
         val parser = context.resources.getLayout(R.layout.view_cast)
