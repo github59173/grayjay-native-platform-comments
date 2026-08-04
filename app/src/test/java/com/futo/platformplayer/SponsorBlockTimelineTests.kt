@@ -94,6 +94,18 @@ class SponsorBlockTimelineTests {
         val values = mutableMapOf<String, String?>()
         setting.applyDefaults(values)
         assertEquals("1", values["sponsorMode"])
-        assertEquals("#B300D400", values["sponsorColor"])
+        assertEquals("\"#B300D400\"", values["sponsorColor"])
+        assertEquals("#B300D400", setting.inlineColor!!.fromStoredValue(values["sponsorColor"]))
+    }
+
+    @Test
+    fun rawInlineColorsFromDevelopmentBuildsAreMigratedToJsonLiterals() {
+        val color = SourcePluginConfig.InlineColorSetting(
+            variable = "sponsorColor",
+            default = "#B300D400",
+            allowAlpha = true
+        )
+        assertEquals("\"#40010203\"", color.toStoredValue("#40010203"))
+        assertEquals("#40010203", color.fromStoredValue("\"#40010203\""))
     }
 }

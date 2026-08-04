@@ -248,8 +248,7 @@ class SourcePluginConfig(
                 values[variableOrName] = default;
 
             inlineColor?.let {
-                if(!values.containsKey(it.variable) || values[it.variable] == null)
-                    values[it.variable] = it.default;
+                values[it.variable] = it.toStoredValue(values[it.variable]);
             }
         }
     }
@@ -259,5 +258,19 @@ class SourcePluginConfig(
         val variable: String,
         val default: String,
         val allowAlpha: Boolean = false
-    )
+    ) {
+        /** Plugin setting values are persisted as JSON literals and parsed by source.js. */
+        fun toStoredValue(value: String?): String =
+            Serializer.json.encodeToString(fromStoredValue(value));
+
+        /** Accept raw values written by early development builds and migrate them on the next save. */
+        fun fromStoredValue(value: String?): String {
+            if(value == null) return default;
+            return try {
+                Serializer.json.decodeFromString<String>(value);
+            } catch(_: Throwable) {
+                value;
+            }
+        }
+    }
 }

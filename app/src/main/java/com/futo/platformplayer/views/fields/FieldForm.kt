@@ -276,10 +276,10 @@ class FieldForm : LinearLayout {
                                 values[setting.variableOrName] = v.toString();
                             }
                             setting.inlineColor?.let { colorSetting ->
-                                val colorValue = values[colorSetting.variable] ?: colorSetting.default;
+                                val colorValue = colorSetting.fromStoredValue(values[colorSetting.variable]);
                                 field.withInlineColor(colorValue, colorSetting.default, colorSetting.allowAlpha);
                                 field.onInlineColorChanged.subscribe { _, updated, _ ->
-                                    values[colorSetting.variable] = updated;
+                                    values[colorSetting.variable] = colorSetting.toStoredValue(updated);
                                 }
                             }
                             field.isAdvanced = (setting.isAdvanced ?: false);
