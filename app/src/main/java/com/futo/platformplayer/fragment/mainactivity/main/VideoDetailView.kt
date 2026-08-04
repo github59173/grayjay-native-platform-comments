@@ -43,7 +43,6 @@ import androidx.media3.common.TrackGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.ui.PlayerControlView
-import androidx.media3.ui.TimeBar
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 import com.bumptech.glide.request.target.CustomTarget
@@ -180,6 +179,7 @@ import com.futo.platformplayer.views.platform.PlatformIndicator
 import com.futo.platformplayer.views.segments.CommentsList
 import com.futo.platformplayer.views.subscriptions.SubscribeButton
 import com.futo.platformplayer.views.video.FutoVideoPlayer
+import com.futo.platformplayer.views.video.SegmentedTimeBar
 import com.futo.platformplayer.views.video.FutoVideoPlayerBase
 import com.futo.platformplayer.views.videometa.UpNextView
 import com.futo.platformplayer.withMaxSizePx
@@ -233,7 +233,7 @@ class VideoDetailView : ConstraintLayout {
     private val _player: FutoVideoPlayer;
     private val _cast: CastView;
     private val _playerProgress: PlayerControlView;
-    private val _timeBar: TimeBar;
+    private val _timeBar: SegmentedTimeBar;
     private var _upNext: UpNextView;
     private var _artworkTarget: CustomTarget<Bitmap>? = null
 
@@ -1049,6 +1049,7 @@ class VideoDetailView : ConstraintLayout {
         _chapters = null
         _player.setChapters(null)
         _cast.setChapters(null)
+        _timeBar.setChapters(null)
     }
 
     fun showChaptersUI(){
@@ -1630,11 +1631,13 @@ class VideoDetailView : ConstraintLayout {
                     val chapters = null ?: StatePlatform.instance.getContentChapters(video.url);
                     _player.setChapters(chapters);
                     _cast.setChapters(chapters);
+                    _timeBar.setChapters(chapters);
                     _chapters = _player.getChapters();
                 } catch (ex: Throwable) {
                     Logger.e(TAG, "Failed to get chapters", ex);
                     _player.setChapters(null);
                     _cast.setChapters(null);
+                    _timeBar.setChapters(null);
                     _chapters = null;
 
                     /*withContext(Dispatchers.Main) {

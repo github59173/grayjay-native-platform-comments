@@ -594,7 +594,9 @@ class StatePlugins {
                 iconsDir.saveIconBinary(config.id, icon);
 
             val descriptor = SourcePluginDescriptor(config, existingAuth?.toEncrypted(), existingCaptcha?.toEncrypted(), flags);
-            descriptor.settings = existing?.settings ?: descriptor.settings;
+            descriptor.settings = HashMap(existing?.settings ?: descriptor.settings);
+            for(setting in descriptor.config.settings)
+                setting.applyDefaults(descriptor.settings);
             descriptor.appSettings = existing?.appSettings ?: descriptor.appSettings;
             _plugins.save(descriptor);
             return null;
@@ -614,20 +616,16 @@ class StatePlugins {
         if(id == StateDeveloper.DEV_ID)
         {
             val decConfig = StatePlatform.instance.getDevClient()?.config ?: return;
-            for(setting in decConfig.settings) {
-                if(!newSettings.containsKey(setting.variableOrName) || newSettings[setting.variableOrName] == null)
-                    newSettings[setting.variableOrName] = setting.default;
-            }
+            for(setting in decConfig.settings)
+                setting.applyDefaults(newSettings);
             StateDeveloper.instance.setDevClientSettings(newSettings);
             return;
         }
         val plugin = getPlugin(id);
 
         if(plugin != null) {
-            for(setting in plugin.config.settings) {
-                if(!newSettings.containsKey(setting.variableOrName) || newSettings[setting.variableOrName] == null)
-                    newSettings[setting.variableOrName] = setting.default;
-            }
+            for(setting in plugin.config.settings)
+                setting.applyDefaults(newSettings);
 
             plugin.settings = newSettings;
             _plugins.save(plugin, false, true);

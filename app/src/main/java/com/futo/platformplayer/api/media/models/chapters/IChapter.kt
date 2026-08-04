@@ -8,6 +8,8 @@ interface IChapter {
     val type: ChapterType;
     val timeStart: Double;
     val timeEnd: Double;
+    /** Optional ARGB color used to render this chapter as a range on playback timelines. */
+    val timelineColor: Int? get() = null;
 }
 
 enum class ChapterType(val value: Int) {

@@ -244,7 +244,7 @@
 
     </TextView>
 
-    <androidx.media3.ui.DefaultTimeBar
+    <com.futo.platformplayer.views.video.SegmentedTimeBar
         android:id="@+id/time_progress"
         android:layout_width="match_parent"
         android:layout_height="12dp"

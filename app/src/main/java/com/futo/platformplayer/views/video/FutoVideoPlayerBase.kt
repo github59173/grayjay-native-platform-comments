@@ -402,7 +402,9 @@ abstract class FutoVideoPlayerBase : RelativeLayout {
     fun setChapters(chapters: List<IChapter>?) {
         _ignoredChapters = arrayListOf();
         _chapters = chapters;
+        onChaptersChanged(chapters);
     }
+    protected open fun onChaptersChanged(chapters: List<IChapter>?) = Unit
     fun getChapters(): List<IChapter> {
         return _chapters?.let { it.toList() } ?: listOf();
     }

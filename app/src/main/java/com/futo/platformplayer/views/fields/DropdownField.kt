@@ -9,6 +9,7 @@ import android.widget.Spinner
 import android.widget.TableRow
 import android.widget.TextView
 import com.futo.platformplayer.R
+import com.futo.platformplayer.api.media.models.chapters.TimelineColor
 import com.futo.platformplayer.constructs.Event3
 import com.futo.platformplayer.logging.Logger
 import java.lang.reflect.Field
@@ -37,6 +38,12 @@ class DropdownField : TableRow, IField {
     private val _title : TextView;
     private val _description : TextView;
     private val _spinner : Spinner;
+    private val _inlineColor : ColorSwatchView;
+    private var _inlineColorValue: String? = null;
+    private var _inlineColorDefault: String? = null;
+    private var _inlineColorAllowAlpha: Boolean = false;
+
+    val onInlineColorChanged = Event3<DropdownField, String, String>();
 
     override var reference: Any? = null;
 
@@ -54,6 +61,28 @@ class DropdownField : TableRow, IField {
         _spinner = findViewById(R.id.field_spinner);
         _title = findViewById(R.id.field_title);
         _description = findViewById(R.id.field_description);
+        _inlineColor = findViewById(R.id.field_inline_color);
+
+        _inlineColor.setOnClickListener {
+            val current = _inlineColorValue ?: return@setOnClickListener
+            val default = _inlineColorDefault ?: return@setOnClickListener
+            InlineColorPickerDialog.show(
+                context,
+                context.getString(R.string.edit_color_for, _title.text),
+                current,
+                default,
+                _inlineColorAllowAlpha
+            ) { updated ->
+                val old = _inlineColorValue ?: default
+                if(old == updated) return@show
+                _inlineColorValue = updated
+                _inlineColor.setColor(TimelineColor.parse(updated) ?: return@show)
+                _inlineColor.contentDescription = context.getString(R.string.color_preview_value, updated)
+                onInlineColorChanged.emit(this@DropdownField, updated, old)
+                // Notify the form without changing the dropdown's dependency value.
+                onChanged.emit(this@DropdownField, _selected, _selected)
+            }
+        }
 
         _isInitFire = true;
         _spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -112,6 +141,18 @@ class DropdownField : TableRow, IField {
         _spinner.setSelection(_selected, true);
 
         return this;
+    }
+
+    fun withInlineColor(value: String?, default: String, allowAlpha: Boolean): DropdownField {
+        val normalizedDefault = TimelineColor.normalize(default) ?: return this
+        val normalizedValue = TimelineColor.normalize(value) ?: normalizedDefault
+        _inlineColorDefault = normalizedDefault
+        _inlineColorValue = normalizedValue
+        _inlineColorAllowAlpha = allowAlpha
+        _inlineColor.setColor(TimelineColor.parse(normalizedValue)!!)
+        _inlineColor.contentDescription = context.getString(R.string.color_preview_value, normalizedValue)
+        _inlineColor.visibility = View.VISIBLE
+        return this
     }
 
     override fun fromField(obj: Any, field: Field, formField: FormField?, advanced: Boolean) : DropdownField {

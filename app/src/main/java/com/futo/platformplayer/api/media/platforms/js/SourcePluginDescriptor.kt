@@ -53,10 +53,8 @@ class SourcePluginDescriptor {
 
     fun getSettingsWithDefaults(): HashMap<String, String?> {
         val map = HashMap(settings);
-        for(field in config.settings) {
-            if(!map.containsKey(field.variableOrName) || map[field.variableOrName] == null)
-                map.put(field.variableOrName, field.default);
-        }
+        for(field in config.settings)
+            field.applyDefaults(map);
         return map;
     }
 

@@ -1,4 +1,13 @@
 <resources>
+    <string name="apply">Apply</string>
+    <string name="reset">Reset</string>
+    <string name="color_hue">Hue</string>
+    <string name="color_opacity">Opacity</string>
+    <string name="color_hex_value">Hex color value</string>
+    <string name="color_saturation_brightness">Color saturation and brightness</string>
+    <string name="color_preview_value">Color preview %1$s</string>
+    <string name="invalid_color_value">Enter #RRGGBB or #AARRGGBB</string>
+    <string name="edit_color_for">Edit color for %1$s</string>
     <string name="cast">Cast</string>
     <string name="search">Search</string>
     <string name="add_to_query">Add to query</string>

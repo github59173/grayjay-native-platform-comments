@@ -238,8 +238,26 @@ class SourcePluginConfig(
         val dependency: String? = null,
         val warningDialog: String? = null,
         val options: List<String>? = null,
-        val isAdvanced: Boolean? = null
+        val isAdvanced: Boolean? = null,
+        val inlineColor: InlineColorSetting? = null
     ) {
         val variableOrName: String get() = variable ?: name;
+
+        fun applyDefaults(values: MutableMap<String, String?>) {
+            if(!values.containsKey(variableOrName) || values[variableOrName] == null)
+                values[variableOrName] = default;
+
+            inlineColor?.let {
+                if(!values.containsKey(it.variable) || values[it.variable] == null)
+                    values[it.variable] = it.default;
+            }
+        }
     }
+
+    @kotlinx.serialization.Serializable
+    data class InlineColorSetting(
+        val variable: String,
+        val default: String,
+        val allowAlpha: Boolean = false
+    )
 }

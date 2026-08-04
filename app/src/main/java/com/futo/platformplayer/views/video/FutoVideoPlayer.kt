@@ -98,7 +98,7 @@ class FutoVideoPlayer : FutoVideoPlayerBase {
     private val _control_chapter: TextView;
     private val _control_time: TextView;
     private val _control_duration: TextView;
-    private val _time_bar: TimeBar;
+    private val _time_bar: SegmentedTimeBar;
     private val _buttonPrevious: ImageButton;
     private val _buttonNext: ImageButton;
 
@@ -110,7 +110,7 @@ class FutoVideoPlayer : FutoVideoPlayerBase {
     private val _control_loop_fullscreen: ImageButton;
     private val _control_cast_fullscreen: ImageButton;
     private val _control_play_fullscreen: ImageButton;
-    private val _time_bar_fullscreen: TimeBar;
+    private val _time_bar_fullscreen: SegmentedTimeBar;
     private val _overlay_brightness: FrameLayout;
     private val _control_chapter_fullscreen: TextView;
     private val _buttonPrevious_fullscreen: ImageButton;
@@ -160,6 +160,11 @@ class FutoVideoPlayer : FutoVideoPlayerBase {
 
     val onVideoClicked = Event0();
     val onTimeBarChanged = Event2<Long, Long>();
+
+    override fun onChaptersChanged(chapters: List<IChapter>?) {
+        _time_bar.setChapters(chapters)
+        _time_bar_fullscreen.setChapters(chapters)
+    }
 
     val onChapterClicked = Event1<IChapter>();
 

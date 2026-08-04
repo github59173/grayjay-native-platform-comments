@@ -4,6 +4,7 @@ import com.caoccao.javet.values.reference.V8ValueArray
 import com.caoccao.javet.values.reference.V8ValueObject
 import com.futo.platformplayer.api.media.models.chapters.ChapterType
 import com.futo.platformplayer.api.media.models.chapters.IChapter
+import com.futo.platformplayer.api.media.models.chapters.TimelineColor
 import com.futo.platformplayer.api.media.platforms.js.SourcePluginConfig
 import com.futo.platformplayer.engine.IV8PluginConfig
 import com.futo.platformplayer.getOrDefault
@@ -14,12 +15,14 @@ class JSChapter : IChapter {
     override val type: ChapterType;
     override val timeStart: Double;
     override val timeEnd: Double;
+    override val timelineColor: Int?;
 
-    constructor(name: String, timeStart: Double, timeEnd: Double, type: ChapterType = ChapterType.NORMAL) {
+    constructor(name: String, timeStart: Double, timeEnd: Double, type: ChapterType = ChapterType.NORMAL, timelineColor: Int? = null) {
         this.name = name;
         this.timeStart = timeStart;
         this.timeEnd = timeEnd;
         this.type = type;
+        this.timelineColor = timelineColor;
     }
 
 
@@ -31,8 +34,9 @@ class JSChapter : IChapter {
             val type = ChapterType.fromInt(obj.getOrDefault<Int>(config, "type", context, ChapterType.NORMAL.value) ?: ChapterType.NORMAL.value);
             val timeStart = obj.getOrThrow<Double>(config, "timeStart", context);
             val timeEnd = obj.getOrThrow<Double>(config, "timeEnd", context);
+            val timelineColor = TimelineColor.parse(obj.getOrDefault<String>(config, "timelineColor", context, null));
 
-            return JSChapter(name, timeStart, timeEnd, type);
+            return JSChapter(name, timeStart, timeEnd, type, timelineColor);
         }
 
         fun fromV8(config: IV8PluginConfig, arr: V8ValueArray): List<IChapter> {

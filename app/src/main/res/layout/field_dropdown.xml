@@ -31,4 +31,11 @@
         android:layout_weight="1"
         android:layout_height="wrap_content"
         android:layout_marginStart="20dp"/>
+
+    <com.futo.platformplayer.views.fields.ColorSwatchView
+        android:id="@+id/field_inline_color"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="4dp"
+        android:visibility="gone" />
 </TableRow>

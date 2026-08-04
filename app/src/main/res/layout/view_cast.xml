@@ -182,7 +182,7 @@
         app:layout_constraintTop_toTopOf="@id/text_position"
         app:layout_constraintBottom_toBottomOf="@id/text_position"/>
 
-    <androidx.media3.ui.DefaultTimeBar
+    <com.futo.platformplayer.views.video.SegmentedTimeBar
         android:id="@+id/time_progress"
         android:layout_width="match_parent"
         android:layout_height="16dp"

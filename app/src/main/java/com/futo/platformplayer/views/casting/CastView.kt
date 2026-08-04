@@ -15,7 +15,6 @@ import androidx.annotation.OptIn
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.TimeBar
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
@@ -33,6 +32,7 @@ import com.futo.platformplayer.logging.Logger
 import com.futo.platformplayer.states.StatePlayer
 import com.futo.platformplayer.views.TargetTapLoaderView
 import com.futo.platformplayer.views.behavior.GestureControlView
+import com.futo.platformplayer.views.video.SegmentedTimeBar
 import com.futo.platformplayer.withMaxSizePx
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,7 +54,7 @@ class CastView : ConstraintLayout {
     private val _textPosition: TextView;
     private val _textDuration: TextView;
     private val _textDivider: TextView;
-    private val _timeBar: DefaultTimeBar;
+    private val _timeBar: SegmentedTimeBar;
     private val _background: FrameLayout;
     private val _gestureControlView: GestureControlView;
     private val _loaderGame: TargetTapLoaderView
@@ -220,6 +220,7 @@ class CastView : ConstraintLayout {
 
     fun setChapters(chapters: List<IChapter>?) {
         _chapters = chapters;
+        _timeBar.setChapters(chapters);
     }
 
     fun getCurrentChapter(pos: Long): IChapter? {
