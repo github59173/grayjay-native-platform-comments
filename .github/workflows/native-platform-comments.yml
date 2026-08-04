@@ -119,7 +119,28 @@ jobs:
         run: |
           tag="native-comments-dev-${GITHUB_RUN_NUMBER}"
           version="0.2.0-dev.${GITHUB_RUN_NUMBER}+${GITHUB_SHA:0:7}"
-          notes="Unofficial development APK for testing native platform comments and reactions. This is the unstableDebug variant; it installs as com.futo.platformplayer.d and enables the optional Browser package through Grayjay's existing BuildConfig.DEBUG gate. See build-info.txt and the SHA-256 attachment for provenance and verification."
+          cat > release-notes.md <<'EOF'
+          ## SponsorBlock timeline colors
+
+          - Shows plugin-provided SponsorBlock ranges on portrait, fullscreen, minimized, and cast-control timelines.
+          - Adds an inline color swatch beside each existing SponsorBlock skip-mode dropdown for Sponsor, Self Promotion, Intro, Outro, Preview, Off-topic, and Filler categories.
+          - Adds a native color editor with hue and saturation/value controls, alpha, checkerboard transparency preview, editable ARGB hex, and Reset, Cancel, and Apply actions.
+          - Uses SponsorBlock's official category colors as reset defaults while allowing every category to be customized independently.
+          - Displays timeline markers only for categories configured as Manual or Automatic. Categories set to No skip remain hidden.
+          - Preserves ordinary YouTube chapters and ignores color metadata from plugins that do not provide it.
+
+          ## Fixes in this update
+
+          - Persists inline color settings correctly, including defaults created before the plugin settings screen has been opened.
+          - Fixes doubled and vertically offset SponsorBlock ranges on the small portrait player by ensuring only its visible progress rail renders segment overlays.
+          - Clips invalid ranges, merges adjacent ranges of the same color, preserves short segments, and draws overlapping ranges in SponsorBlock-compatible order.
+
+          ## Development build details
+
+          This unofficial prerelease also includes the native YouTube comment, reply, reaction, edit, and delete proof of concept from earlier builds. It is the `unstableDebug` variant, installs as `com.futo.platformplayer.d`, and enables the optional Browser package through Grayjay's existing `BuildConfig.DEBUG` gate.
+
+          See `build-info.txt` and the SHA-256 attachment for exact commit, version, package, and artifact verification details.
+          EOF
 
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" \
@@ -133,7 +154,7 @@ jobs:
               --target "$GITHUB_SHA" \
               --title "Grayjay native comments development ${version}" \
               --prerelease \
-              --notes "$notes"
+              --notes-file release-notes.md
           else
             gh release create "$tag" \
               dist/grayjay-native-comments-unstable-debug.apk \
@@ -143,5 +164,5 @@ jobs:
               --target "$GITHUB_SHA" \
               --title "Grayjay native comments development ${version}" \
               --prerelease \
-              --notes "$notes"
+              --notes-file release-notes.md
           fi
