@@ -6,6 +6,22 @@
   const rootSelector = 'ytd-comments#comments';
   const channelNavigationScheme = 'grayjay-comments';
   const hiddenAttribute = 'data-grayjay-comments-hidden';
+  const suppressedPromoAttribute = 'data-grayjay-comments-promo-suppressed';
+  const promotionalSelectors = [
+    'yt-mealbar-promo-renderer',
+    'ytd-mealbar-promo-renderer',
+    'yt-background-promo-renderer',
+    'ytd-background-promo-renderer',
+    'yt-primetime-promo-renderer',
+    'ytd-primetime-promo-renderer',
+    'yt-premium-promo-renderer',
+    'ytd-premium-promo-renderer',
+    'yt-upsell-dialog-renderer',
+    'ytd-upsell-dialog-renderer',
+    'yt-offline-promo-renderer',
+    'ytd-offline-promo-renderer'
+  ];
+  const promotionalSelector = promotionalSelectors.join(',');
   const playerSelectors = [
     'ytd-watch-flexy #player-container-outer',
     'ytd-watch-flexy #player-container-inner',
@@ -35,6 +51,8 @@
   style.id = 'grayjay-youtube-comments-style';
   style.textContent = `
     [${hiddenAttribute}],
+    [${suppressedPromoAttribute}],
+    ${promotionalSelector},
     ${playerSelectors.join(',')} {
       display: none !important;
       width: 0 !important;
@@ -158,6 +176,48 @@
     });
   };
 
+  const clearOrphanedPromoBackdrops = () => {
+    const hasFunctionalDialog = Array.from(document.querySelectorAll(
+      'tp-yt-paper-dialog, [role="dialog"]'
+    )).some((dialog) => {
+      if (dialog.hasAttribute(suppressedPromoAttribute) ||
+          dialog.querySelector(promotionalSelector)) return false;
+      const rect = dialog.getBoundingClientRect();
+      return dialog.hasAttribute('opened') || dialog.opened === true ||
+        dialog.getAttribute('aria-hidden') === 'false' ||
+        (rect.width > 0 && rect.height > 0);
+    });
+    if (hasFunctionalDialog) return;
+
+    document.querySelectorAll(
+      'tp-yt-iron-overlay-backdrop.opened, tp-yt-iron-overlay-backdrop[opened]'
+    ).forEach((backdrop) => backdrop.remove());
+  };
+
+  const suppressPromotionalPopups = () => {
+    let suppressed = false;
+    document.querySelectorAll(promotionalSelector).forEach((promotion) => {
+      suppressed = true;
+      const dialog = promotion.closest('tp-yt-paper-dialog, [role="dialog"]');
+      const target = dialog || promotion;
+      target.setAttribute(suppressedPromoAttribute, '');
+
+      if (dialog) {
+        try {
+          if (typeof dialog.close === 'function') dialog.close();
+        } catch (_) {}
+        dialog.remove();
+      } else {
+        promotion.remove();
+      }
+    });
+
+    if (suppressed) {
+      clearOrphanedPromoBackdrops();
+      requestAnimationFrame(clearOrphanedPromoBackdrops);
+    }
+  };
+
   const shouldPreserve = (element) => {
     if (!(element instanceof Element)) return true;
     return preserveSelectors.some((selector) => {
@@ -207,6 +267,7 @@
   const isolate = () => {
     scheduled = false;
     removePlayer();
+    suppressPromotionalPopups();
 
     const root = document.querySelector(rootSelector);
     if (!root) return false;
@@ -266,6 +327,7 @@
   window.addEventListener('yt-navigate-finish', schedule);
   setInterval(() => {
     removePlayer();
+    suppressPromotionalPopups();
     if (!rootFound || !document.querySelector(rootSelector)) schedule();
   }, 1000);
   schedule();

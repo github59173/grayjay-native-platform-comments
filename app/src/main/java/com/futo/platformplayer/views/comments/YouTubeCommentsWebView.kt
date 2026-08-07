@@ -25,6 +25,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.OverScroller
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.annotation.RequiresApi
@@ -429,9 +430,36 @@ class YouTubeCommentsWebView(context: Context) : FrameLayout(context) {
         private val locationBeforeScroll = IntArray(2)
         private val locationAfterScroll = IntArray(2)
         private val minimumFlingVelocity = ViewConfiguration.get(context).scaledMinimumFlingVelocity
+        private val maximumFlingVelocity = ViewConfiguration.get(context).scaledMaximumFlingVelocity
+        private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+        private val coordinatedFling = OverScroller(context)
         private var scrollHost: RecyclerView? = null
         private var velocityTracker: VelocityTracker? = null
         private var lastScreenTouchY = 0f
+        private var downScreenTouchY = 0f
+        private var hasDragged = false
+        private var lastFlingY = 0
+
+        private val flingRunner = object : Runnable {
+            override fun run() {
+                if (!coordinatedFling.computeScrollOffset()) return
+
+                val currentY = coordinatedFling.currY
+                val requestedScrollY = currentY - lastFlingY
+                lastFlingY = currentY
+
+                if (requestedScrollY != 0) {
+                    val consumedScrollY = consumeCoordinatedScroll(requestedScrollY)
+                    if (consumedScrollY != requestedScrollY) {
+                        coordinatedFling.forceFinished(true)
+                        return
+                    }
+                }
+
+                if (!coordinatedFling.isFinished)
+                    postOnAnimation(this)
+            }
+        }
 
         init {
             isVerticalScrollBarEnabled = false
@@ -442,16 +470,23 @@ class YouTubeCommentsWebView(context: Context) : FrameLayout(context) {
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             val webEvent = MotionEvent.obtain(event)
+            var flingVelocityY: Int? = null
+            var cancelWebGesture = false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    stopCoordinatedFling()
                     scrollHost = findRecyclerViewParent()?.also { it.stopScroll() }
                     velocityTracker?.recycle()
                     velocityTracker = VelocityTracker.obtain().also { it.addScreenSpaceMovement(event) }
                     lastScreenTouchY = event.rawY
+                    downScreenTouchY = event.rawY
+                    hasDragged = false
                     parent?.requestDisallowInterceptTouchEvent(true)
                 }
                 MotionEvent.ACTION_MOVE -> {
                     velocityTracker?.addScreenSpaceMovement(event)
+                    if (!hasDragged && kotlin.math.abs(event.rawY - downScreenTouchY) >= touchSlop)
+                        hasDragged = true
                     val requestedScrollY = (lastScreenTouchY - event.rawY).toInt()
                     val host = scrollHost
                     var consumedByHost = 0
@@ -467,30 +502,88 @@ class YouTubeCommentsWebView(context: Context) : FrameLayout(context) {
                 MotionEvent.ACTION_UP -> {
                     velocityTracker?.apply {
                         addScreenSpaceMovement(event)
-                        computeCurrentVelocity(1000)
+                        computeCurrentVelocity(1000, maximumFlingVelocity.toFloat())
                         val scrollVelocityY = -yVelocity.toInt()
-                        val host = scrollHost
-                        if (host != null && kotlin.math.abs(scrollVelocityY) >= minimumFlingVelocity &&
-                            shouldHostConsume(scrollVelocityY, host)) {
-                            host.fling(0, scrollVelocityY)
-                        }
+                        if (hasDragged && kotlin.math.abs(scrollVelocityY) >= minimumFlingVelocity)
+                            flingVelocityY = scrollVelocityY
                         recycle()
                     }
                     velocityTracker = null
+                    cancelWebGesture = hasDragged
                     parent?.requestDisallowInterceptTouchEvent(false)
                 }
                 MotionEvent.ACTION_CANCEL -> {
                     velocityTracker?.recycle()
                     velocityTracker = null
+                    hasDragged = false
                     parent?.requestDisallowInterceptTouchEvent(false)
                 }
             }
 
             return try {
-                super.onTouchEvent(webEvent)
+                if (cancelWebGesture)
+                    webEvent.action = MotionEvent.ACTION_CANCEL
+                val handled = super.onTouchEvent(webEvent)
+                flingVelocityY?.let(::startCoordinatedFling)
+                handled || flingVelocityY != null
             } finally {
                 webEvent.recycle()
             }
+        }
+
+        override fun onDetachedFromWindow() {
+            stopCoordinatedFling()
+            velocityTracker?.recycle()
+            velocityTracker = null
+            super.onDetachedFromWindow()
+        }
+
+        private fun startCoordinatedFling(velocityY: Int) {
+            stopCoordinatedFling()
+            lastFlingY = 0
+            coordinatedFling.fling(
+                0,
+                0,
+                0,
+                velocityY,
+                0,
+                0,
+                -COORDINATED_FLING_LIMIT,
+                COORDINATED_FLING_LIMIT
+            )
+            postOnAnimation(flingRunner)
+        }
+
+        private fun stopCoordinatedFling() {
+            removeCallbacks(flingRunner)
+            if (!coordinatedFling.isFinished)
+                coordinatedFling.forceFinished(true)
+        }
+
+        private fun consumeCoordinatedScroll(scrollDeltaY: Int): Int {
+            return TwoSurfaceScrollCoordinator.consume(
+                scrollDeltaY,
+                consumeOuter = ::scrollHostBy,
+                consumeInner = ::scrollWebViewBy
+            )
+        }
+
+        private fun scrollHostBy(scrollDeltaY: Int): Int {
+            val host = scrollHost ?: return 0
+            if (!host.canScrollVertically(if (scrollDeltaY > 0) 1 else -1)) return 0
+
+            getLocationOnScreen(locationBeforeScroll)
+            host.scrollBy(0, scrollDeltaY)
+            getLocationOnScreen(locationAfterScroll)
+            return locationBeforeScroll[1] - locationAfterScroll[1]
+        }
+
+        private fun scrollWebViewBy(scrollDeltaY: Int): Int {
+            if (!canScrollVertically(if (scrollDeltaY > 0) 1 else -1)) return 0
+
+            val scrollYBefore = scrollY
+            super.scrollBy(0, scrollDeltaY)
+            return scrollY - scrollYBefore
         }
 
         private fun shouldHostConsume(scrollDeltaY: Int, host: RecyclerView): Boolean {
@@ -518,6 +611,10 @@ class YouTubeCommentsWebView(context: Context) : FrameLayout(context) {
             } finally {
                 screenEvent.recycle()
             }
+        }
+
+        companion object {
+            private const val COORDINATED_FLING_LIMIT = 1_000_000
         }
     }
 

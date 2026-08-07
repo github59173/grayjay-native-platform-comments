@@ -5,6 +5,22 @@
 
   const ROOT_SELECTOR = 'ytd-comments#comments';
   const HIDDEN_ATTRIBUTE = 'data-grayjay-isolation-hidden';
+  const SUPPRESSED_PROMO_ATTRIBUTE = 'data-grayjay-comments-promo-suppressed';
+  const PROMOTIONAL_SELECTORS = [
+    'yt-mealbar-promo-renderer',
+    'ytd-mealbar-promo-renderer',
+    'yt-background-promo-renderer',
+    'ytd-background-promo-renderer',
+    'yt-primetime-promo-renderer',
+    'ytd-primetime-promo-renderer',
+    'yt-premium-promo-renderer',
+    'ytd-premium-promo-renderer',
+    'yt-upsell-dialog-renderer',
+    'ytd-upsell-dialog-renderer',
+    'yt-offline-promo-renderer',
+    'ytd-offline-promo-renderer'
+  ];
+  const PROMOTIONAL_SELECTOR = PROMOTIONAL_SELECTORS.join(',');
   const PLAYER_SELECTORS = [
     'ytd-watch-flexy #player-container-outer',
     'ytd-watch-flexy #player-container-inner',
@@ -31,7 +47,12 @@
   ];
 
   const css = String.raw`
-    [${HIDDEN_ATTRIBUTE}] { display: none !important; }
+    [${HIDDEN_ATTRIBUTE}],
+    [${SUPPRESSED_PROMO_ATTRIBUTE}],
+    ${PROMOTIONAL_SELECTOR} {
+      display: none !important;
+      pointer-events: none !important;
+    }
 
     ytd-watch-flexy #player-container-outer,
     ytd-watch-flexy #player-container-inner,
@@ -208,9 +229,52 @@
     });
   };
 
+  const clearOrphanedPromoBackdrops = () => {
+    const hasFunctionalDialog = Array.from(document.querySelectorAll(
+      'tp-yt-paper-dialog, [role="dialog"]'
+    )).some((dialog) => {
+      if (dialog.hasAttribute(SUPPRESSED_PROMO_ATTRIBUTE) ||
+          dialog.querySelector(PROMOTIONAL_SELECTOR)) return false;
+      const rect = dialog.getBoundingClientRect();
+      return dialog.hasAttribute('opened') || dialog.opened === true ||
+        dialog.getAttribute('aria-hidden') === 'false' ||
+        (rect.width > 0 && rect.height > 0);
+    });
+    if (hasFunctionalDialog) return;
+
+    document.querySelectorAll(
+      'tp-yt-iron-overlay-backdrop.opened, tp-yt-iron-overlay-backdrop[opened]'
+    ).forEach((backdrop) => backdrop.remove());
+  };
+
+  const suppressPromotionalPopups = () => {
+    let suppressed = false;
+    document.querySelectorAll(PROMOTIONAL_SELECTOR).forEach((promotion) => {
+      suppressed = true;
+      const dialog = promotion.closest('tp-yt-paper-dialog, [role="dialog"]');
+      const target = dialog || promotion;
+      target.setAttribute(SUPPRESSED_PROMO_ATTRIBUTE, '');
+
+      if (dialog) {
+        try {
+          if (typeof dialog.close === 'function') dialog.close();
+        } catch (_) {}
+        dialog.remove();
+      } else {
+        promotion.remove();
+      }
+    });
+
+    if (suppressed) {
+      clearOrphanedPromoBackdrops();
+      requestAnimationFrame(clearOrphanedPromoBackdrops);
+    }
+  };
+
   const isolate = () => {
     scheduled = false;
     removeVideoPlayer();
+    suppressPromotionalPopups();
 
     const root = document.querySelector(ROOT_SELECTOR);
     if (!root) return false;
@@ -304,6 +368,7 @@
   window.addEventListener('load', scheduleIsolation, { once: true });
   window.setInterval(() => {
     removeVideoPlayer();
+    suppressPromotionalPopups();
     if (!rootWasFound || !document.querySelector(`${ROOT_SELECTOR}[data-grayjay-comments-root="ready"]`)) {
       scheduleIsolation();
     }
