@@ -85,6 +85,15 @@ class SettingsDev : FragmentedStorageFileJson() {
         @FormField(R.string.background_subscription_testing, FieldForm.TOGGLE, -1, 0)
         @Serializable(with = FlexibleBooleanSerializer::class)
         var backgroundSubscriptionFetching: Boolean = false;
+
+        @FormField(
+            R.string.experimental_youtube_web_comments,
+            FieldForm.TOGGLE,
+            R.string.experimental_youtube_web_comments_description,
+            1
+        )
+        @Serializable(with = FlexibleBooleanSerializer::class)
+        var youtubeWebComments: Boolean = true;
     }
 
 

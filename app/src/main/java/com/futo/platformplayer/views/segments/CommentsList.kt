@@ -86,8 +86,10 @@ class CommentsList : ConstraintLayout {
     private val _recyclerComments: RecyclerView;
     private val _comments: ArrayList<IPlatformComment> = arrayListOf();
     private var _commentsPager: IPager<IPlatformComment>? = null;
+    private var _replacementView: View? = null;
     private var _loading = false;
     private val _prependedView: FrameLayout;
+    private val _replacementViewContainer: FrameLayout;
     private var _readonly: Boolean = false;
     private var _replyThreadParent: IPlatformComment? = null
     private var _replyThreadState = PlatformCommentingState.UNKNOWN
@@ -123,8 +125,13 @@ class CommentsList : ConstraintLayout {
         _prependedView = FrameLayout(context);
         _prependedView.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT);
 
-        _adapterComments = InsertedViewAdapterWithLoader(context, arrayListOf(_prependedView, _textMessage), arrayListOf(),
-            childCountGetter = { _comments.size },
+        _replacementViewContainer = FrameLayout(context).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+            visibility = View.GONE
+        }
+
+        _adapterComments = InsertedViewAdapterWithLoader(context, arrayListOf(_prependedView, _replacementViewContainer, _textMessage), arrayListOf(),
+            childCountGetter = { if (_replacementView == null) _comments.size else 0 },
             childViewHolderBinder = { viewHolder, position ->
                 viewHolder.bind(_comments[position], _readonly, _replyThreadParent, _replyThreadState)
             },
@@ -172,6 +179,36 @@ class CommentsList : ConstraintLayout {
         _prependedView.removeAllViews();
         _prependedView.addView(view);
     }
+
+    /**
+     * Replaces native comment rows while retaining this list's prepended video
+     * metadata/tab header. Scrollable replacements coordinate their gestures
+     * with this list so the header and replacement behave as one surface.
+     */
+    fun setReplacementView(view: View?) {
+        if (_replacementView === view)
+            return
+
+        _replacementViewContainer.removeAllViews()
+        _replacementView = view
+
+        if (view != null) {
+            (view.parent as? android.view.ViewGroup)?.removeView(view)
+            _replacementViewContainer.addView(view)
+            _replacementViewContainer.visibility = View.VISIBLE
+            cancel()
+            setLoading(false)
+            _comments.clear()
+            _commentsPager = null
+            setMessage(null)
+        } else {
+            _replacementViewContainer.visibility = View.GONE
+        }
+
+        _adapterComments.notifyDataSetChanged()
+    }
+
+    fun hasReplacementView(): Boolean = _replacementView != null
 
     /**
      * YouTube replies are flat. Every child uses the top-level thread's reply

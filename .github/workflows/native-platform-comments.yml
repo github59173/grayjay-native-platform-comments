@@ -120,6 +120,15 @@ jobs:
           tag="native-comments-dev-${GITHUB_RUN_NUMBER}"
           version="0.2.0-dev.${GITHUB_RUN_NUMBER}+${GITHUB_SHA:0:7}"
           cat > release-notes.md <<'EOF'
+          ## Official YouTube desktop comments experiment
+
+          - Replaces the YouTube Platform tab with YouTube's live desktop `ytd-comments#comments` surface while keeping the component attached to the official watch-page runtime.
+          - Preserves YouTube's own composer, continuations, replies, menus, reactions, and signed-in actions instead of parsing or reconstructing comment data.
+          - Removes the duplicate watch-page player, blocks duplicate Googlevideo media requests, matches Grayjay's dark background, and coordinates the WebView with Grayjay's single scrolling surface.
+          - Routes comment author names, avatars, and channel mentions through Grayjay's native channel screen without allowing YouTube's SPA to replace the isolated comments page.
+          - Reuses the active YouTube plugin authentication, never loads the WebView in private mode, and automatically falls back to Grayjay's native Platform comments after a renderer or readiness failure.
+          - Enable or disable the experiment under `More > Settings > Developer Settings > Experimental > Official YouTube web comments`. Disabled uses the original native Grayjay comments implementation.
+
           ## SponsorBlock timeline colors
 
           - Shows plugin-provided SponsorBlock ranges on portrait, fullscreen, minimized, and cast-control timelines.
@@ -137,7 +146,7 @@ jobs:
 
           ## Development build details
 
-          This unofficial prerelease also includes the native YouTube comment, reply, reaction, edit, and delete proof of concept from earlier builds. It is the `unstableDebug` variant, installs as `com.futo.platformplayer.d`, and enables the optional Browser package through Grayjay's existing `BuildConfig.DEBUG` gate.
+          This unofficial prerelease also retains the native YouTube comment, reply, reaction, edit, and delete implementation as the experiment's fallback. It is the `unstableDebug` variant, installs as `com.futo.platformplayer.d`, and enables the optional Browser package through Grayjay's existing `BuildConfig.DEBUG` gate.
 
           See `build-info.txt` and the SHA-256 attachment for exact commit, version, package, and artifact verification details.
           EOF

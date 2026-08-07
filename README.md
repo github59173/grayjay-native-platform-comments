@@ -9,9 +9,20 @@
 > Start with [Native platform comments and reactions](NATIVE_PLATFORM_COMMENTS.md)
 > for the feature map, companion plugin, build instructions, verification
 > evidence, and an upstream-review plan.
+>
+> A new maintainer should begin with the [developer handoff and current status](DEVELOPER_HANDOFF.md),
+> which identifies the released branch and revisions, workspace boundaries,
+> build/release procedure, known risks, and recommended next work.
 
 For the installable GitHub Actions development APK and Android Studio emulator
 instructions, see [Testing the GitHub Actions APK](docs/native-platform-comments/TESTING_APK.md).
+
+The [YouTube desktop comments lab](research/youtube-desktop-comments-lab/EXTRACTION_NOTES.md)
+was used to select the production extraction seam. The current Android
+experiment can replace the YouTube Platform tab with the live desktop
+`ytd-comments#comments` surface in its original YouTube runtime. It does not
+reconstruct comments or proxy continuation requests. Enable or disable it with
+Developer settings > Experimental > Official YouTube web comments.
 
 The FUTO media app endeavours creating infrastructure for creators to have their content hosted by someone else but at the same time having creators retain full ownership of their content. We want creators to feel like they are publishing to the world, and we want multiple indexers competing with each other to do a good job connecting consumers to creators and their content.
 

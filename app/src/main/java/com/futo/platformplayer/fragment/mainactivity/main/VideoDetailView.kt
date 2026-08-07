@@ -158,6 +158,7 @@ import com.futo.platformplayer.views.adapters.feedtypes.PreviewVideoView
 import com.futo.platformplayer.views.behavior.TouchInterceptFrameLayout
 import com.futo.platformplayer.views.casting.CastView
 import com.futo.platformplayer.views.comments.AddCommentView
+import com.futo.platformplayer.views.comments.YouTubeCommentsWebView
 import com.futo.platformplayer.views.others.CreatorThumbnail
 import com.futo.platformplayer.views.overlays.ChaptersOverlay
 import com.futo.platformplayer.views.overlays.DescriptionOverlay
@@ -282,6 +283,8 @@ class VideoDetailView : ConstraintLayout {
         }
 
     private val _addCommentView: AddCommentView;
+    private var _youtubeCommentsWebView: YouTubeCommentsWebView? = null
+    private var _youtubeCommentsVideoUrl: String? = null
     private var _tabIndex: Int? = null;
 
     private val _layoutSkip: LinearLayout;
@@ -935,6 +938,7 @@ class VideoDetailView : ConstraintLayout {
         };
 
         onClose.subscribe {
+            destroyYouTubeCommentsWebView()
             _artworkTarget?.let { Glide.with(context).clear(it) }
             _artworkTarget = null
             _player.setArtwork(null)
@@ -1337,6 +1341,7 @@ class VideoDetailView : ConstraintLayout {
     }
     fun onDestroy() {
         Logger.i(TAG, "onDestroy");
+        destroyYouTubeCommentsWebView()
         _destroyed = true;
         _videoReactionGeneration++
         _platformVideoReactionMutationJob?.cancel()
@@ -1409,6 +1414,7 @@ class VideoDetailView : ConstraintLayout {
             return;
 
         _searchVideo = null;
+        destroyYouTubeCommentsWebView()
         video = null;
         cleanupPlaybackTracker();
         clearChapters()
@@ -1468,6 +1474,7 @@ class VideoDetailView : ConstraintLayout {
             return;
         }
 
+        destroyYouTubeCommentsWebView()
         this.video = null;
         cleanupPlaybackTracker();
         _searchVideo = video;
@@ -3473,6 +3480,114 @@ class VideoDetailView : ConstraintLayout {
                 _commentsList.load(false) { StatePlatform.instance.getComments(it); };
         }
     }
+
+    private fun showYouTubeCommentsWebView(): Boolean {
+        val currentVideo = video ?: return false
+        val videoUrl = currentVideo.url
+        if (!YouTubeCommentsWebView.isEligible(videoUrl, currentVideo.id.pluginId))
+            return false
+
+        if (_youtubeCommentsVideoUrl != videoUrl)
+            destroyYouTubeCommentsWebView()
+
+        val surface = _youtubeCommentsWebView ?: YouTubeCommentsWebView(context).also { created ->
+            val surfaceHeight = (resources.displayMetrics.heightPixels - 96.dp(resources))
+                .coerceAtLeast(480.dp(resources))
+            created.layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, surfaceHeight)
+            created.onFallback = fallback@{
+                if (_youtubeCommentsWebView !== created) return@fallback
+                _commentsList.setReplacementView(null)
+                created.destroySurface()
+                _youtubeCommentsWebView = null
+                _youtubeCommentsVideoUrl = null
+                if (_tabIndex == 1 && video?.url == videoUrl) {
+                    showNativePlatformComposer()
+                    fetchComments()
+                    UIDialogs.toast(context, context.getString(R.string.youtube_web_comments_fallback), false)
+                }
+            }
+            created.onLoginRequired = { launchYouTubeCommentsLogin(created, videoUrl) }
+            created.onChannelUrl = { routeYouTubeCommentsChannelUrl(it) }
+            created.onExternalUrl = { routeYouTubeCommentsUrl(it) }
+            _youtubeCommentsWebView = created
+            _youtubeCommentsVideoUrl = videoUrl
+        }
+
+        if (!surface.load(videoUrl)) {
+            surface.destroySurface()
+            _youtubeCommentsWebView = null
+            _youtubeCommentsVideoUrl = null
+            UIDialogs.toast(context, context.getString(R.string.youtube_web_comments_fallback), false)
+            return false
+        }
+
+        _commentsList.setReplacementView(surface)
+        return true
+    }
+
+    private fun showNativePlatformComposer() {
+        _addCommentView.setDestination(CommentDestination.PLATFORM, true)
+        val canCreate = PlatformCommentUiPolicy.canCreate(video?.url?.let {
+            StatePlatform.instance.getContentClientOrNull(it)?.capabilities
+        })
+        _addCommentView.visibility = if (canCreate) View.VISIBLE else View.GONE
+    }
+
+    private fun launchYouTubeCommentsLogin(surface: YouTubeCommentsWebView, videoUrl: String) {
+        val client = StatePlatform.instance.getContentClientOrNull(videoUrl) as? JSClient ?: return
+        if (client.config.id != com.futo.platformplayer.views.comments.YouTubeCommentsWebPolicy.YOUTUBE_SOURCE_ID)
+            return
+        isLoginStop = true
+        LoginFragment.showLogin(client.config) { auth ->
+            if (auth == null) return@showLogin
+            StateApp.instance.scopeOrNull?.launch(Dispatchers.IO) {
+                try {
+                    StatePlugins.instance.setPluginAuth(client.config.id, auth)
+                    StatePlatform.instance.reloadClient(context.applicationContext, client.config.id)
+                    withContext(Dispatchers.Main) {
+                        if (_youtubeCommentsWebView === surface && video?.url == videoUrl)
+                            surface.reloadWithPluginAuth()
+                    }
+                } catch (e: Throwable) {
+                    Logger.e(TAG, "Failed to reload YouTube login for web comments", e)
+                }
+            }
+        }
+    }
+
+    private fun routeYouTubeCommentsUrl(url: String) {
+        fragment.lifecycleScope.launch(Dispatchers.Main) {
+            try {
+                val activity = context as? MainActivity
+                if (activity?.handleUrl(url) != true) {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                        addCategory(Intent.CATEGORY_BROWSABLE)
+                    })
+                }
+            } catch (e: Throwable) {
+                Logger.w(TAG, "Failed to route YouTube comments URL", e)
+            }
+        }
+    }
+
+    private fun routeYouTubeCommentsChannelUrl(url: String) {
+        fragment.lifecycleScope.launch(Dispatchers.Main) {
+            try {
+                (context as? MainActivity)?.handleUrl(url)
+            } catch (e: Throwable) {
+                Logger.w(TAG, "Failed to route YouTube comment channel URL", e)
+            }
+        }
+    }
+
+    private fun destroyYouTubeCommentsWebView() {
+        val surface = _youtubeCommentsWebView ?: return
+        if (_commentsList.hasReplacementView())
+            _commentsList.setReplacementView(null)
+        surface.destroySurface()
+        _youtubeCommentsWebView = null
+        _youtubeCommentsVideoUrl = null
+    }
     private fun fetchPolycentricComments() {
         Logger.i(TAG, "fetchPolycentricComments")
         val video = video;
@@ -3718,6 +3833,9 @@ class VideoDetailView : ConstraintLayout {
         _buttonPolycentric.setTextColor(resources.getColor(if (index == 0) R.color.white else R.color.gray_ac))
         _layoutRecommended.removeAllViews()
 
+        if (index != 1)
+            _commentsList.setReplacementView(null)
+
         if (index == null) {
             _addCommentView.setDestination(null)
             _addCommentView.visibility = View.GONE
@@ -3729,13 +3847,15 @@ class VideoDetailView : ConstraintLayout {
             _layoutRecommended.visibility = View.GONE
             fetchPolycentricComments()
         } else if (index == 1) {
-            _addCommentView.setDestination(CommentDestination.PLATFORM, true)
-            val canCreate = PlatformCommentUiPolicy.canCreate(video?.url?.let {
-                StatePlatform.instance.getContentClientOrNull(it)?.capabilities
-            })
-            _addCommentView.visibility = if (canCreate) View.VISIBLE else View.GONE
             _layoutRecommended.visibility = View.GONE
-            fetchComments()
+            if (showYouTubeCommentsWebView()) {
+                _addCommentView.setDestination(null)
+                _addCommentView.visibility = View.GONE
+            } else {
+                _commentsList.setReplacementView(null)
+                showNativePlatformComposer()
+                fetchComments()
+            }
         } else if (index == 2) {
             _addCommentView.setDestination(null)
             _addCommentView.visibility = View.GONE

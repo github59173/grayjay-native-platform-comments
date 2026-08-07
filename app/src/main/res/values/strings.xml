@@ -636,6 +636,10 @@
     <string name="allow_all_certificates_warning">This risks exposing all your Grayjay network traffic.</string>
     <string name="development_server">Development Server</string>
     <string name="experimental">Experimental</string>
+    <string name="experimental_youtube_web_comments">Official YouTube web comments</string>
+    <string name="experimental_youtube_web_comments_description">Replace the native Platform comments list on YouTube videos with YouTube’s official desktop comments surface. Disable this to use Grayjay’s native comments.</string>
+    <string name="youtube_web_comments_loading">Loading official YouTube comments…</string>
+    <string name="youtube_web_comments_fallback">Official YouTube comments became unavailable. Using native comments.</string>
     <string name="cache">Cache</string>
     <string name="fill_storage_till_error">Fill storage till error</string>
     <string name="inject">Inject</string>
