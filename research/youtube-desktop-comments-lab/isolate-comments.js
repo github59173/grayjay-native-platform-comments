@@ -90,7 +90,7 @@
       max-width: none !important;
       min-width: 0 !important;
       margin: 0 auto !important;
-      padding: 0 16px 48px !important;
+      padding: 0 16px !important;
       position: relative !important;
       visibility: visible !important;
     }

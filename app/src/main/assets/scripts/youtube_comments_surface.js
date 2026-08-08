@@ -98,7 +98,7 @@
       max-width: none !important;
       width: 100% !important;
       margin: 0 !important;
-      padding: 0 12px 48px !important;
+      padding: 0 12px !important;
       position: relative !important;
       visibility: visible !important;
       background: __GRAYJAY_BACKGROUND__ !important;

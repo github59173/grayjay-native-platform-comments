@@ -140,6 +140,7 @@ jobs:
 
           ## Fixes in this update
 
+          - Removes the empty bottom strip that appeared at YouTube comment continuation boundaries on higher-density physical devices.
           - Carries fling momentum across the Grayjay metadata/YouTube comments boundary so rapid scrolling no longer pauses and requires a second swipe.
           - Suppresses YouTube Premium, Primetime, offline, mealbar, and other upsell renderers inside the isolated comments surface while preserving functional comment dialogs and menus.
           - Persists inline color settings correctly, including defaults created before the plugin settings screen has been opened.

@@ -12,6 +12,8 @@ if [[ "$stable_revision" != "$unstable_revision" ]]; then
   exit 1
 fi
 
+node --test "$repository_root/scripts/youtube-comments-surface.test.mjs"
+
 npm --prefix "$stable_plugin" run verify
 npm --prefix "$unstable_plugin" run verify
 
